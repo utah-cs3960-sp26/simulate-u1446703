@@ -11,6 +11,10 @@ Always comment your code with detailed comments. When writing functions, outline
 ## TASKS.md
 Plan out implementations in advance, and use TASKS.md to faciliate this. You are welcome to create more markdown files if necessary. If at any time you determine a way to optimize the information handoff between agents, you are encouraged to do so. You are allowed to make any changes you deem necessary to any file **besides PROMPT>.md**.
 
+## GitHub
+
+This project rests within a Github repo. At the end of every iteration, you are to push your changes with a detailed description. You may make new branches beyond main, and organize the repo to your liking.
+
 # Documentation guidelines
 
 ## Update documentation
