@@ -13,7 +13,7 @@ simulate-u1446703/
 │   ├── renderer.cpp        # SDL3 rendering (circles, lines)
 │   └── main.cpp            # Entry point, scene setup, main loop
 ├── tests/
-│   └── test_physics.cpp    # 20 unit tests for physics engine
+│   └── test_physics.cpp    # 25 unit tests for physics engine
 ├── docs/
 │   ├── ARCHITECTURE.md     # This file
 │   └── BUILD.md            # Build instructions
@@ -27,8 +27,14 @@ simulate-u1446703/
 - **Substep integration**: Each frame is divided into N substeps (default 8) to prevent tunneling.
 - **Iterative constraint solving**: Each substep runs 4 iterations of collision resolution.
 - **Position-based correction + impulse**: Overlapping objects are first separated positionally, then velocity impulses are applied. This prevents the "jitter→explode" failure mode.
+- **Correct ball-ball restitution response**: The pair solver now computes relative velocity using the standard normal direction (A→B) so approaching balls receive the intended restitution impulse instead of only positional separation.
+- **Endpoint-aware wall contacts**: Exact wall-endpoint overlaps now distinguish point contacts from segment interiors so a ball resting exactly on a corner can reflect away from the endpoint instead of only mirroring the segment axis.
 - **O(n²) collision**: Acceptable for ~1000 balls (~500K checks). A spatial hash grid would be needed for larger counts.
 - **Sleep threshold**: Balls below a velocity threshold are zeroed out to help convergence.
+- **Settling invariant coverage**: The regression suite checks that changing restitution affects decay time, but not the final packed footprint of a settled pile.
+- **Shelf-scene settling coverage**: The regression suite now also checks that the same restitution invariant holds in a more simulator-like scene with internal shelves and mixed-radius balls.
+- **Momentum-transfer regression coverage**: The tests now assert post-collision velocities for equal-mass head-on impacts so future refactors cannot silently break restitution handling.
+- **Wall-joint regression coverage**: The test suite now covers exact endpoint overlaps and sealed corner joints so wall-contact edge cases are exercised as directly as the ball-ball impulse path.
 
 ### Renderer (renderer.h / renderer.cpp)
 
@@ -41,6 +47,7 @@ simulate-u1446703/
 - Rectangular container with two angled shelves for visual interest.
 - 1000 balls placed in a grid with slight random offsets and velocities.
 - Restitution configurable via command-line argument: `./simulator [restitution]`
+- The new shelf-scene regression mirrors this layout style in deterministic form so the automated suite covers geometry closer to the real app scene, not just a plain rectangular box.
 
 ## Key Classes
 
@@ -57,10 +64,11 @@ simulate-u1446703/
 
 ### Ball-Wall
 1. Find closest point on wall segment to ball center
-2. If distance < radius: push ball out along normal, reflect velocity with restitution
+2. Distinguish segment interiors from clamped endpoints so exact corner-point contacts can choose a valid point-contact normal
+3. If distance < radius: push ball out along normal, reflect velocity with restitution
 
 ### Ball-Ball
 1. Check center-to-center distance vs sum of radii
 2. If overlapping: push apart proportional to inverse mass
-3. Apply impulse along collision normal with restitution
+3. Compute B-relative-to-A velocity along the A→B collision normal and apply the restitution impulse only while the pair is closing
 4. Apply tangential friction (Coulomb model)

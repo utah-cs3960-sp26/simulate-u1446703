@@ -92,8 +92,22 @@ void PhysicsWorld::integratePositions(float subDt) {
 void PhysicsWorld::solveBallWallCollisions() {
     for (auto& ball : balls) {
         for (const auto& wall : walls) {
-            // Find closest point on wall segment to ball center
-            Vec2 closest = closestPointOnSegment(ball.pos, wall.p1, wall.p2);
+            // Recompute the clamped segment parameter locally instead of only
+            // calling the helper so we can distinguish interior contacts from
+            // endpoint contacts. That distinction matters when the ball center
+            // lands exactly on the closest point: segment interiors should use
+            // the wall normal, while exact endpoint hits need a point-contact
+            // fallback normal or they only reflect one axis.
+            Vec2 wallDelta = wall.p2 - wall.p1;
+            float wallLengthSq = wallDelta.lengthSq();
+            float t = 0.0f;
+            if (wallLengthSq > 1e-12f) {
+                t = (ball.pos - wall.p1).dot(wallDelta) / wallLengthSq;
+                t = std::max(0.0f, std::min(1.0f, t));
+            }
+
+            // Find closest point on wall segment to ball center.
+            Vec2 closest = wall.p1 + wallDelta * t;
             Vec2 diff = ball.pos - closest;
             float dist = diff.length();
 
@@ -101,8 +115,20 @@ void PhysicsWorld::solveBallWallCollisions() {
             if (dist < ball.radius) {
                 Vec2 normal;
                 if (dist < 1e-6f) {
-                    // Ball center is exactly on the wall — use wall normal
-                    normal = wall.normal();
+                    const bool atEndpoint = (t <= 1e-4f) || (t >= 1.0f - 1e-4f);
+
+                    if (atEndpoint && ball.vel.lengthSq() > 1e-8f) {
+                        // Exact endpoint hits have no unique geometric normal
+                        // because the center sits on the corner point. In that
+                        // case, reflect along the incoming direction so the
+                        // response behaves like a circle colliding with a point.
+                        normal = ball.vel * -1.0f;
+                        normal = normal.normalized();
+                    } else {
+                        // Exact interior contacts still have a well-defined wall
+                        // normal, so use the segment orientation as before.
+                        normal = wall.normal();
+                    }
                 } else {
                     // Normal points from wall toward ball center
                     normal = diff.normalized();
@@ -168,14 +194,19 @@ void PhysicsWorld::solveBallBallCollisions() {
 
             // ── Position correction: push apart ──────────────────────
             float penetration = minDist - dist;
-            float totalInvMass = (1.0f / a.mass) + (1.0f / b.mass);
+            const float invMassA = 1.0f / a.mass;
+            const float invMassB = 1.0f / b.mass;
+            const float totalInvMass = invMassA + invMassB;
 
             // Each ball moves proportional to its inverse mass
-            a.pos -= normal * (penetration * (1.0f / a.mass) / totalInvMass);
-            b.pos += normal * (penetration * (1.0f / b.mass) / totalInvMass);
+            a.pos -= normal * (penetration * invMassA / totalInvMass);
+            b.pos += normal * (penetration * invMassB / totalInvMass);
 
             // ── Velocity impulse ─────────────────────────────────────
-            Vec2 relVel = a.vel - b.vel;
+            // Use the standard relative velocity of B with respect to A.
+            // With the collision normal pointing from A to B, a negative
+            // dot product means the pair is closing and needs an impulse.
+            Vec2 relVel = b.vel - a.vel;
             float velAlongNormal = relVel.dot(normal);
 
             // Only resolve if balls are approaching each other
@@ -185,8 +216,8 @@ void PhysicsWorld::solveBallBallCollisions() {
             float impulseMag = -(1.0f + config.restitution) * velAlongNormal / totalInvMass;
 
             Vec2 impulse = normal * impulseMag;
-            a.vel += impulse * (1.0f / a.mass);
-            b.vel -= impulse * (1.0f / b.mass);
+            a.vel -= impulse * invMassA;
+            b.vel += impulse * invMassB;
 
             // ── Tangential friction ──────────────────────────────────
             Vec2 tangent = relVel - normal * velAlongNormal;
@@ -199,8 +230,8 @@ void PhysicsWorld::solveBallBallCollisions() {
                 frictionImpulse = std::max(-maxFriction, std::min(maxFriction, frictionImpulse));
 
                 Vec2 fricVec = tangent * frictionImpulse;
-                a.vel += fricVec * (1.0f / a.mass);
-                b.vel -= fricVec * (1.0f / b.mass);
+                a.vel -= fricVec * invMassA;
+                b.vel += fricVec * invMassB;
             }
         }
     }

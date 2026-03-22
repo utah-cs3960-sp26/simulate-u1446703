@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cmath>
 #include <cstdlib>
+#include <algorithm>
 
 // ── Minimal test framework ──────────────────────────────────────────
 static int tests_run = 0;
@@ -41,6 +42,149 @@ static int tests_failed = 0;
         tests_failed++; tests_passed--; return; \
     } \
 } while(0)
+
+// ── Shared settling helpers ─────────────────────────────────────────
+// These helpers intentionally build the exact same compact stacking
+// scenario with different restitution values. The project requirement
+// is not just "lower restitution settles faster"; it also requires the
+// final resting pile to occupy the same amount of space regardless of
+// restitution. Keeping the fixture in one place makes that invariant
+// easy to extend in later iterations.
+struct SettledBounds {
+    float minX = 0.0f;
+    float maxX = 0.0f;
+    float minY = 0.0f;
+    float maxY = 0.0f;
+    float maxSpeed = 0.0f;
+
+    float width() const { return maxX - minX; }
+    float height() const { return maxY - minY; }
+};
+
+static PhysicsWorld makeSettlingWorld(float restitution) {
+    PhysicsWorld world;
+    world.config.gravity = 500.0f;
+    world.config.substeps = 8;
+    world.config.restitution = restitution;
+    world.config.damping = 0.999f;
+    world.config.friction = 0.1f;
+    world.config.sleepSpeed = 2.0f;
+
+    // A simple rectangular container removes scene-specific noise so
+    // the test isolates the solver's packing behavior.
+    world.walls.push_back(Wall(Vec2(0, 0), Vec2(200, 0)));
+    world.walls.push_back(Wall(Vec2(200, 0), Vec2(200, 400)));
+    world.walls.push_back(Wall(Vec2(200, 400), Vec2(0, 400)));
+    world.walls.push_back(Wall(Vec2(0, 400), Vec2(0, 0)));
+
+    // The balls start in a regular grid so every restitution value
+    // begins from the same state and any final-volume drift is easy to spot.
+    for (int i = 0; i < 50; ++i) {
+        float x = 20 + (i % 10) * 18;
+        float y = 20 + (i / 10) * 18;
+        Ball b(Vec2(x, y), 7.0f);
+        world.balls.push_back(b);
+    }
+
+    return world;
+}
+
+static SettledBounds simulateToSettledBounds(float restitution, int steps) {
+    PhysicsWorld world = makeSettlingWorld(restitution);
+
+    // Run long enough for high-restitution cases to finish bouncing and
+    // for the sleep threshold to zero out residual micro-motion.
+    for (int i = 0; i < steps; ++i) {
+        world.step(0.016f);
+    }
+
+    SettledBounds bounds;
+    bounds.minX = 1e9f;
+    bounds.maxX = -1e9f;
+    bounds.minY = 1e9f;
+    bounds.maxY = -1e9f;
+
+    for (const auto& b : world.balls) {
+        bounds.minX = std::min(bounds.minX, b.pos.x - b.radius);
+        bounds.maxX = std::max(bounds.maxX, b.pos.x + b.radius);
+        bounds.minY = std::min(bounds.minY, b.pos.y - b.radius);
+        bounds.maxY = std::max(bounds.maxY, b.pos.y + b.radius);
+        bounds.maxSpeed = std::max(bounds.maxSpeed, b.vel.length());
+    }
+
+    return bounds;
+}
+
+static PhysicsWorld makeShelfSettlingWorld(float restitution) {
+    PhysicsWorld world;
+    world.config.gravity = 500.0f;
+    world.config.substeps = 8;
+    world.config.restitution = restitution;
+    world.config.damping = 0.999f;
+    world.config.friction = 0.1f;
+    world.config.sleepSpeed = 2.0f;
+
+    // This fixture mirrors the real simulator more closely than the simple
+    // box test above: it uses the same kind of container plus two internal
+    // shelves. Keeping it deterministic gives us a stable regression target
+    // for the "same final occupied space" requirement without depending on
+    // SDL, randomness, or the interactive app loop.
+    const float left = 50.0f;
+    const float right = 750.0f;
+    const float top = 50.0f;
+    const float bottom = 750.0f;
+
+    world.walls.push_back(Wall(Vec2(left, top), Vec2(right, top)));
+    world.walls.push_back(Wall(Vec2(right, top), Vec2(right, bottom)));
+    world.walls.push_back(Wall(Vec2(right, bottom), Vec2(left, bottom)));
+    world.walls.push_back(Wall(Vec2(left, bottom), Vec2(left, top)));
+
+    const float midX = (left + right) / 2.0f;
+    const float shelfY1 = top + (bottom - top) * 0.35f;
+    const float shelfY2 = top + (bottom - top) * 0.6f;
+    world.walls.push_back(Wall(Vec2(left, shelfY1), Vec2(midX - 40.0f, shelfY1 + 50.0f)));
+    world.walls.push_back(Wall(Vec2(midX + 40.0f, shelfY2 + 50.0f), Vec2(right, shelfY2)));
+
+    // Mixed radii make the packing problem more demanding than a uniform
+    // lattice. If restitution were incorrectly changing the final occupied
+    // shape, this scene tends to expose it because shelves create multiple
+    // local basins and the different ball sizes interlock non-uniformly.
+    for (int i = 0; i < 120; ++i) {
+        const float x = 70.0f + static_cast<float>(i % 12) * 24.0f;
+        const float y = 70.0f + static_cast<float>(i / 12) * 24.0f;
+        const float radius = (i % 3 == 0) ? 5.0f : ((i % 3 == 1) ? 7.0f : 9.0f);
+        world.balls.push_back(Ball(Vec2(x, y), radius));
+    }
+
+    return world;
+}
+
+static SettledBounds simulateShelfSceneToSettledBounds(float restitution, int steps) {
+    PhysicsWorld world = makeShelfSettlingWorld(restitution);
+
+    // The shelf scene has more contacts than the simple box fixture, so it
+    // needs a longer run to let the high-restitution case finish redistributing
+    // across shelves and to let the sleep threshold clear residual jitter.
+    for (int i = 0; i < steps; ++i) {
+        world.step(0.016f);
+    }
+
+    SettledBounds bounds;
+    bounds.minX = 1e9f;
+    bounds.maxX = -1e9f;
+    bounds.minY = 1e9f;
+    bounds.maxY = -1e9f;
+
+    for (const auto& b : world.balls) {
+        bounds.minX = std::min(bounds.minX, b.pos.x - b.radius);
+        bounds.maxX = std::max(bounds.maxX, b.pos.x + b.radius);
+        bounds.minY = std::min(bounds.minY, b.pos.y - b.radius);
+        bounds.maxY = std::max(bounds.maxY, b.pos.y + b.radius);
+        bounds.maxSpeed = std::max(bounds.maxSpeed, b.vel.length());
+    }
+
+    return bounds;
+}
 
 // ═══════════════════════════════════════════════════════════════════════
 // Vec2 tests
@@ -210,6 +354,69 @@ TEST(ball_does_not_phase_through_wall) {
     ASSERT(world.balls[0].pos.x < 200.0f);
 }
 
+TEST(ball_bounces_off_wall_endpoint) {
+    // This regression targets the exact endpoint-overlap branch in the
+    // wall solver. If the ball center lands directly on the segment end,
+    // the solver cannot use the generic wall normal because that only
+    // reflects the segment axis. Instead it needs a point-contact normal
+    // so both velocity components reverse away from the endpoint.
+    PhysicsWorld world;
+    world.config.gravity = 0.0f;
+    world.config.substeps = 1;
+    world.config.restitution = 1.0f;
+    world.config.friction = 0.0f;
+    world.config.damping = 1.0f;
+    world.config.sleepSpeed = 0.0f;
+
+    Ball ball(Vec2(100.0f, 60.0f), 5.0f);
+    ball.vel = {60.0f, 60.0f};
+    world.balls.push_back(ball);
+
+    // The segment endpoint is exactly at the ball center. Stepping with
+    // dt=0 still runs the solver, which isolates the overlap-resolution
+    // branch without any integration noise.
+    world.walls.push_back(Wall(Vec2(40.0f, 60.0f), Vec2(100.0f, 60.0f)));
+    world.step(0.0f);
+
+    const Vec2 endpoint = world.walls[0].p2;
+    const Vec2 fromEndpoint = world.balls[0].pos - endpoint;
+
+    ASSERT(fromEndpoint.length() >= world.balls[0].radius - 0.2f);
+    ASSERT(world.balls[0].vel.x < 0.0f);
+    ASSERT(world.balls[0].vel.y < 0.0f);
+}
+
+TEST(ball_remains_outside_corner_joint) {
+    // Two walls meeting at a corner should behave like a sealed boundary.
+    // This regression catches cases where a ball gets numerically wedged
+    // into the joint and leaks through because each wall is considered in
+    // isolation without respecting the shared endpoint geometry.
+    PhysicsWorld world;
+    world.config.gravity = 0.0f;
+    world.config.substeps = 12;
+    world.config.restitution = 0.2f;
+    world.config.friction = 0.0f;
+    world.config.damping = 1.0f;
+    world.config.sleepSpeed = 0.0f;
+
+    Ball ball(Vec2(80.0f, 80.0f), 10.0f);
+    ball.vel = {140.0f, 140.0f};
+    world.balls.push_back(ball);
+
+    // These two walls form a closed bottom-right corner. The inside region
+    // is up-left of the joint, so the ball should never end up with its
+    // center closer than one radius to either boundary.
+    world.walls.push_back(Wall(Vec2(100.0f, 0.0f), Vec2(100.0f, 100.0f)));
+    world.walls.push_back(Wall(Vec2(100.0f, 100.0f), Vec2(0.0f, 100.0f)));
+
+    for (int i = 0; i < 80; ++i) {
+        world.step(0.016f);
+
+        ASSERT(world.balls[0].pos.x <= 90.2f);
+        ASSERT(world.balls[0].pos.y <= 90.2f);
+    }
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Ball-ball collision tests
 // ═══════════════════════════════════════════════════════════════════════
@@ -267,6 +474,42 @@ TEST(head_on_collision_conserves_direction) {
     // After collision: ball B should have gained rightward momentum
     // (in a perfectly elastic equal-mass collision, A stops and B takes all velocity)
     ASSERT(world.balls[1].pos.x > 80.0f); // B moved right from its start position
+    ASSERT_NEAR(world.balls[0].vel.x, 0.0f, 1.0f);
+    ASSERT_NEAR(world.balls[1].vel.x, 100.0f, 1.0f);
+}
+
+TEST(inelastic_head_on_collision_reduces_relative_speed) {
+    // This regression targets the impulse direction directly. If the
+    // relative velocity sign is wrong, the solver will separate the
+    // balls positionally but leave them with nearly their original
+    // closing speed, which violates the restitution requirement.
+    PhysicsWorld world;
+    world.config.gravity = 0.0f;
+    world.config.substeps = 8;
+    world.config.restitution = 0.25f;
+    world.config.damping = 1.0f;
+    world.config.friction = 0.0f;
+    world.config.sleepSpeed = 0.0f;
+
+    Ball a(Vec2(30, 50), 10.0f);
+    a.vel = {120, 0};
+    Ball b(Vec2(80, 50), 10.0f);
+    b.vel = {-40, 0};
+    world.balls.push_back(a);
+    world.balls.push_back(b);
+
+    // Run until after the collision has been resolved.
+    for (int i = 0; i < 30; ++i) {
+        world.step(0.016f);
+    }
+
+    const float finalRelativeSpeed = world.balls[1].vel.x - world.balls[0].vel.x;
+    const float expectedRelativeSpeed = 0.25f * (120.0f - (-40.0f));
+
+    // After impact, the balls should be moving apart and their
+    // separation speed should match restitution for equal-mass bodies.
+    ASSERT(finalRelativeSpeed > 0.0f);
+    ASSERT_NEAR(finalRelativeSpeed, expectedRelativeSpeed, 2.0f);
 }
 
 TEST(ball_ball_overlap_resolved) {
@@ -351,6 +594,44 @@ TEST(restitution_zero_stops_quickly) {
 
     // Ball should have essentially stopped
     ASSERT(world.balls[0].vel.length() < 5.0f);
+}
+
+TEST(restitution_changes_decay_not_final_packed_size) {
+    // The final resting footprint should be a property of geometry and
+    // ball sizes, not of how bouncy the transient motion was on the way there.
+    const SettledBounds lowRestitution = simulateToSettledBounds(0.0f, 900);
+    const SettledBounds mediumRestitution = simulateToSettledBounds(0.3f, 900);
+    const SettledBounds highRestitution = simulateToSettledBounds(0.9f, 900);
+
+    ASSERT_NEAR(lowRestitution.maxSpeed, 0.0f, 0.05f);
+    ASSERT_NEAR(mediumRestitution.maxSpeed, 0.0f, 0.05f);
+    ASSERT_NEAR(highRestitution.maxSpeed, 0.0f, 0.05f);
+    ASSERT_NEAR(lowRestitution.height(), mediumRestitution.height(), 0.5f);
+    ASSERT_NEAR(lowRestitution.height(), highRestitution.height(), 0.5f);
+    ASSERT_NEAR(lowRestitution.width(), mediumRestitution.width(), 0.5f);
+    ASSERT_NEAR(lowRestitution.width(), highRestitution.width(), 0.5f);
+    ASSERT_NEAR(lowRestitution.minY, mediumRestitution.minY, 0.5f);
+    ASSERT_NEAR(lowRestitution.minY, highRestitution.minY, 0.5f);
+}
+
+TEST(restitution_preserves_final_packed_size_in_shelf_scene) {
+    // The project requirement applies to the actual simulator-style geometry,
+    // not just a plain box. This regression hardens that promise by checking
+    // a shelf-filled container with mixed ball sizes, which is much closer to
+    // the interactive scene than the simple stacking fixture above.
+    const SettledBounds lowRestitution = simulateShelfSceneToSettledBounds(0.0f, 2200);
+    const SettledBounds mediumRestitution = simulateShelfSceneToSettledBounds(0.3f, 2200);
+    const SettledBounds highRestitution = simulateShelfSceneToSettledBounds(0.9f, 2200);
+
+    ASSERT_NEAR(lowRestitution.maxSpeed, 0.0f, 0.05f);
+    ASSERT_NEAR(mediumRestitution.maxSpeed, 0.0f, 0.05f);
+    ASSERT_NEAR(highRestitution.maxSpeed, 0.0f, 0.05f);
+    ASSERT_NEAR(lowRestitution.width(), mediumRestitution.width(), 0.5f);
+    ASSERT_NEAR(lowRestitution.width(), highRestitution.width(), 0.5f);
+    ASSERT_NEAR(lowRestitution.height(), mediumRestitution.height(), 0.5f);
+    ASSERT_NEAR(lowRestitution.height(), highRestitution.height(), 0.5f);
+    ASSERT_NEAR(lowRestitution.minY, mediumRestitution.minY, 0.5f);
+    ASSERT_NEAR(lowRestitution.minY, highRestitution.minY, 0.5f);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
