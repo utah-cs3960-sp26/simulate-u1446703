@@ -9,7 +9,7 @@ The following files should always be pulled into context:
 # Prompt
 *See PROJECT-OVERVIEW.md for more information when necessary*
 
-You are implementing a 2D physics simulator using SDL3 via C++.. The simulator should simulate circular balls and fixed, immovable walls. The balls should be influenced by gravity and should collide with the walls and with other balls in non-elastic collisions with restitution. Balls must not overlap or phase through walls or other balls. Make the restitution amount configurable; you should see things settle down faster with less restitution, but the final "settled" state should take up the same amount of space no matter the amount of restitution.
+You are implementing a 2D physics simulator using SDL3 via C++.. The simulator should simulate circular balls and fixed, immovable walls. The balls should be influenced by gravity and should collide with the walls and with other balls in non-elastic collisions with restitution. Balls must not overlap or phase through walls or other balls. Make the restitution amount configurable; you should see things settle down faster with less restitution, but the final "settled" state should take up the same amount of space no matter the amount of restitution. The project should be able to comfortably render 1000 balls at 30 FPS most of the time.
 
 There must be accurate and adequate tests for this simulator. You must at all costs verify that the simulator is working after every change, by whatever means necessary. You are encouraged to launch the program yourself and verify that it works properly.
 
