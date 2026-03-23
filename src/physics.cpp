@@ -11,6 +11,35 @@
 #include "physics.h"
 #include <algorithm>
 #include <cmath>
+#include <unordered_set>
+
+// ═══════════════════════════════════════════════════════════════════════
+// SpatialGrid implementation
+// ═══════════════════════════════════════════════════════════════════════
+
+void SpatialGrid::clear() {
+    // Reuse allocated bucket memory by clearing each vector rather than
+    // destroying the whole map. This avoids repeated heap allocation
+    // every solver iteration.
+    for (auto& [key, indices] : cells_) {
+        indices.clear();
+    }
+}
+
+void SpatialGrid::insert(int index, const Ball& ball) {
+    // Compute the range of cells overlapped by the ball's bounding box.
+    float invCell = 1.0f / cellSize;
+    int x0 = static_cast<int>(std::floor((ball.pos.x - ball.radius) * invCell));
+    int y0 = static_cast<int>(std::floor((ball.pos.y - ball.radius) * invCell));
+    int x1 = static_cast<int>(std::floor((ball.pos.x + ball.radius) * invCell));
+    int y1 = static_cast<int>(std::floor((ball.pos.y + ball.radius) * invCell));
+
+    for (int cy = y0; cy <= y1; ++cy) {
+        for (int cx = x0; cx <= x1; ++cx) {
+            cells_[{cx, cy}].push_back(index);
+        }
+    }
+}
 
 // ── Utility: closest point on a line segment to a point ─────────────
 // Used for ball-vs-wall collision detection.
@@ -156,9 +185,11 @@ void PhysicsWorld::solveBallWallCollisions() {
 
 // ═══════════════════════════════════════════════════════════════════════
 // solveBallBallCollisions
-// O(n^2) pairwise check. For ~1000 balls this is ~500K checks per
-// solver iteration, which is acceptable at this scale. If we needed
-// more, we'd add a spatial hash grid.
+// Uses a spatial hash grid to narrow the search to nearby pairs instead
+// of the naive O(n²) pairwise check. Each ball is inserted into the
+// grid cells its bounding box overlaps, then only pairs sharing a cell
+// are tested. A pair-visited set prevents duplicate resolution when a
+// pair spans multiple cells.
 //
 // For each overlapping pair:
 //   1. Separate them along the center-to-center axis (proportional to
@@ -166,75 +197,105 @@ void PhysicsWorld::solveBallWallCollisions() {
 //   2. Apply an impulse to swap/reduce the velocity components along
 //      the collision normal, scaled by restitution.
 // ═══════════════════════════════════════════════════════════════════════
-void PhysicsWorld::solveBallBallCollisions() {
-    const size_t n = balls.size();
 
-    for (size_t i = 0; i < n; ++i) {
-        for (size_t j = i + 1; j < n; ++j) {
-            Ball& a = balls[i];
-            Ball& b = balls[j];
-
-            Vec2 diff = b.pos - a.pos;
-            float distSq = diff.lengthSq();
-            float minDist = a.radius + b.radius;
-
-            // Early-out: no overlap
-            if (distSq >= minDist * minDist) continue;
-
-            float dist = std::sqrt(distSq);
-            Vec2 normal;
-
-            if (dist < 1e-6f) {
-                // Balls are exactly overlapping — pick arbitrary direction
-                normal = {0.0f, 1.0f};
-                dist = 0.0f;
-            } else {
-                normal = diff * (1.0f / dist); // b-a direction, normalized
-            }
-
-            // ── Position correction: push apart ──────────────────────
-            float penetration = minDist - dist;
-            const float invMassA = 1.0f / a.mass;
-            const float invMassB = 1.0f / b.mass;
-            const float totalInvMass = invMassA + invMassB;
-
-            // Each ball moves proportional to its inverse mass
-            a.pos -= normal * (penetration * invMassA / totalInvMass);
-            b.pos += normal * (penetration * invMassB / totalInvMass);
-
-            // ── Velocity impulse ─────────────────────────────────────
-            // Use the standard relative velocity of B with respect to A.
-            // With the collision normal pointing from A to B, a negative
-            // dot product means the pair is closing and needs an impulse.
-            Vec2 relVel = b.vel - a.vel;
-            float velAlongNormal = relVel.dot(normal);
-
-            // Only resolve if balls are approaching each other
-            if (velAlongNormal > 0.0f) continue;
-
-            // Impulse magnitude with restitution
-            float impulseMag = -(1.0f + config.restitution) * velAlongNormal / totalInvMass;
-
-            Vec2 impulse = normal * impulseMag;
-            a.vel -= impulse * invMassA;
-            b.vel += impulse * invMassB;
-
-            // ── Tangential friction ──────────────────────────────────
-            Vec2 tangent = relVel - normal * velAlongNormal;
-            float tangentLen = tangent.length();
-            if (tangentLen > 1e-6f) {
-                tangent = tangent * (1.0f / tangentLen);
-                float frictionImpulse = -relVel.dot(tangent) / totalInvMass;
-                // Clamp friction to Coulomb model
-                float maxFriction = config.friction * std::abs(impulseMag);
-                frictionImpulse = std::max(-maxFriction, std::min(maxFriction, frictionImpulse));
-
-                Vec2 fricVec = tangent * frictionImpulse;
-                a.vel -= fricVec * invMassA;
-                b.vel += fricVec * invMassB;
-            }
-        }
+// Hash for (int, int) pairs used to deduplicate grid-reported collisions.
+struct PairHash {
+    std::size_t operator()(const std::pair<int,int>& p) const {
+        // Cantor pairing gives a unique mapping for ordered (i,j) where i<j.
+        return static_cast<std::size_t>(p.first) * 100003 +
+               static_cast<std::size_t>(p.second);
     }
+};
+
+void PhysicsWorld::solveBallBallCollisions() {
+    const int n = static_cast<int>(balls.size());
+    if (n < 2) return;
+
+    // Determine optimal cell size: 2× the largest ball radius ensures
+    // each ball touches at most 4 cells (2×2 neighborhood).
+    float maxRadius = 0.0f;
+    for (const auto& b : balls) {
+        if (b.radius > maxRadius) maxRadius = b.radius;
+    }
+    grid_.cellSize = std::max(maxRadius * 2.0f, 1.0f);
+
+    // Populate the grid with all balls.
+    grid_.clear();
+    for (int i = 0; i < n; ++i) {
+        grid_.insert(i, balls[i]);
+    }
+
+    // Track which pairs have already been resolved this iteration to
+    // avoid duplicate work when a pair appears in multiple cells.
+    std::unordered_set<std::pair<int,int>, PairHash> visited;
+
+    grid_.forEachPair([&](int i, int j) {
+        // Skip if already processed this iteration.
+        if (!visited.insert({i, j}).second) return;
+
+        Ball& a = balls[i];
+        Ball& b = balls[j];
+
+        Vec2 diff = b.pos - a.pos;
+        float distSq = diff.lengthSq();
+        float minDist = a.radius + b.radius;
+
+        // Early-out: no overlap
+        if (distSq >= minDist * minDist) return;
+
+        float dist = std::sqrt(distSq);
+        Vec2 normal;
+
+        if (dist < 1e-6f) {
+            // Balls are exactly overlapping — pick arbitrary direction
+            normal = {0.0f, 1.0f};
+            dist = 0.0f;
+        } else {
+            normal = diff * (1.0f / dist); // b-a direction, normalized
+        }
+
+        // ── Position correction: push apart ──────────────────────
+        float penetration = minDist - dist;
+        const float invMassA = 1.0f / a.mass;
+        const float invMassB = 1.0f / b.mass;
+        const float totalInvMass = invMassA + invMassB;
+
+        // Each ball moves proportional to its inverse mass
+        a.pos -= normal * (penetration * invMassA / totalInvMass);
+        b.pos += normal * (penetration * invMassB / totalInvMass);
+
+        // ── Velocity impulse ─────────────────────────────────────
+        // Use the standard relative velocity of B with respect to A.
+        // With the collision normal pointing from A to B, a negative
+        // dot product means the pair is closing and needs an impulse.
+        Vec2 relVel = b.vel - a.vel;
+        float velAlongNormal = relVel.dot(normal);
+
+        // Only resolve if balls are approaching each other
+        if (velAlongNormal > 0.0f) return;
+
+        // Impulse magnitude with restitution
+        float impulseMag = -(1.0f + config.restitution) * velAlongNormal / totalInvMass;
+
+        Vec2 impulse = normal * impulseMag;
+        a.vel -= impulse * invMassA;
+        b.vel += impulse * invMassB;
+
+        // ── Tangential friction ──────────────────────────────────
+        Vec2 tangent = relVel - normal * velAlongNormal;
+        float tangentLen = tangent.length();
+        if (tangentLen > 1e-6f) {
+            tangent = tangent * (1.0f / tangentLen);
+            float frictionImpulse = -relVel.dot(tangent) / totalInvMass;
+            // Clamp friction to Coulomb model
+            float maxFriction = config.friction * std::abs(impulseMag);
+            frictionImpulse = std::max(-maxFriction, std::min(maxFriction, frictionImpulse));
+
+            Vec2 fricVec = tangent * frictionImpulse;
+            a.vel -= fricVec * invMassA;
+            b.vel += fricVec * invMassB;
+        }
+    }); // end forEachPair lambda
 }
 
 // ═══════════════════════════════════════════════════════════════════════

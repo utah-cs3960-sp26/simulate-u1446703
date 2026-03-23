@@ -4,8 +4,10 @@
 // completely independent of SDL so it can be tested in isolation.
 
 #include <vector>
+#include <unordered_map>
 #include <cmath>
 #include <cstdint>
+#include <utility>
 
 // ── 2D Vector helper ────────────────────────────────────────────────
 struct Vec2 {
@@ -77,6 +79,70 @@ struct PhysicsConfig {
     float sleepSpeed    = 2.0f;     // Velocity threshold to zero-out balls
 };
 
+// ── Spatial hash grid ───────────────────────────────────────────────
+// Divides space into uniform cells so ball-ball collision only checks
+// nearby pairs instead of all O(n²) combinations. Each ball is inserted
+// into every cell its bounding box overlaps. Then only pairs that share
+// at least one cell are tested. For 1000 balls of radius 3–6 px in a
+// 1200×800 window, a cell size of ~20–30 px keeps each cell sparse.
+struct CellKey {
+    int32_t cx, cy;
+    bool operator==(const CellKey& o) const { return cx == o.cx && cy == o.cy; }
+};
+
+struct CellKeyHash {
+    // Fast spatial hash: multiply-shift on two 32-bit coordinates.
+    std::size_t operator()(const CellKey& k) const {
+        // Large primes give good distribution for small integer keys.
+        return static_cast<std::size_t>(k.cx * 73856093) ^
+               static_cast<std::size_t>(k.cy * 19349663);
+    }
+};
+
+class SpatialGrid {
+public:
+    // cellSize should be >= 2 * max ball radius so every ball touches
+    // at most 4 cells (the 2×2 neighborhood of its center cell).
+    float cellSize = 20.0f;
+
+    // Clear all cells — called once per solver iteration before re-insert.
+    void clear();
+
+    // Insert ball index into every cell its bounding box overlaps.
+    void insert(int index, const Ball& ball);
+
+    // Iterate over every unique (i, j) pair that shares a cell and invoke
+    // the callback. The callback signature is void(int i, int j).
+    template<typename Func>
+    void forEachPair(Func&& fn) const;
+
+private:
+    // Maps cell coordinate → list of ball indices in that cell.
+    std::unordered_map<CellKey, std::vector<int>, CellKeyHash> cells_;
+};
+
+// ── Template implementation (must be in header) ─────────────────────
+template<typename Func>
+void SpatialGrid::forEachPair(Func&& fn) const {
+    // For each cell, test all pairs within it. To avoid reporting the
+    // same (i,j) pair from two different cells, we only call the callback
+    // when i < j and rely on the fact that every colliding pair shares
+    // at least one cell. Duplicate callbacks for the same pair from
+    // different cells are possible; the caller must guard against that
+    // (e.g., by checking a visited set or by accepting idempotent work).
+    for (const auto& [key, indices] : cells_) {
+        const size_t n = indices.size();
+        for (size_t a = 0; a < n; ++a) {
+            for (size_t b = a + 1; b < n; ++b) {
+                int i = indices[a];
+                int j = indices[b];
+                if (i > j) { int tmp = i; i = j; j = tmp; }
+                fn(i, j);
+            }
+        }
+    }
+}
+
 // ── PhysicsWorld ────────────────────────────────────────────────────
 // Owns all balls and walls; advances the simulation each frame.
 // Uses substep integration + iterative position correction to keep
@@ -97,6 +163,9 @@ public:
     float totalKineticEnergy() const;
 
 private:
+    // Spatial grid reused across solver iterations to avoid per-frame alloc.
+    SpatialGrid grid_;
+
     // ── Per-substep helpers ──────────────────────────────────────────
 
     // Apply gravity and damping to all ball velocities.
@@ -109,8 +178,9 @@ private:
     // Pushes ball out and reflects velocity component along wall normal.
     void solveBallWallCollisions();
 
-    // Detect and resolve ball-vs-ball overlaps.
-    // Separates balls proportionally to inverse mass and applies impulse.
+    // Detect and resolve ball-vs-ball overlaps using the spatial grid.
+    // Only tests pairs that share a grid cell, bringing average cost
+    // from O(n²) down to ~O(n) for uniformly distributed balls.
     void solveBallBallCollisions();
 
     // Zero out velocity of nearly-stopped balls to help settling.

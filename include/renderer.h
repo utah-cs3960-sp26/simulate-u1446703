@@ -31,6 +31,9 @@ public:
     // Clear the screen with background color.
     void clear();
 
+    // Draw FPS and ball count overlay in top-left corner.
+    void drawHUD(float fps, int ballCount);
+
 private:
     SDL_Window*   window_   = nullptr;
     SDL_Renderer* renderer_ = nullptr;

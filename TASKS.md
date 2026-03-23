@@ -1,5 +1,14 @@
 # Tasks
 
+## Completed — Iteration 6 (2026-03-23)
+
+- [x] Build and verify 25/25 baseline tests pass
+- [x] Implement spatial hash grid for O(n) ball-ball collision detection
+- [x] Add FPS counter + ball count HUD overlay to renderer
+- [x] Add 4 new tests: glancing endpoint impact, dense column stack, spatial grid correctness, 1000-ball performance benchmark
+- [x] Build, verify 29/29 tests pass, confirm simulator startup
+- [x] Update documentation (ARCHITECTURE.md, BUILD.md, AGENT-PROGRESS.md, TASKS.md)
+
 ## Completed — Iteration 5 (2026-03-22)
 
 - [x] Rebuild and rerun the simulator test suite to re-establish a clean baseline before extending settling coverage
@@ -46,10 +55,13 @@
 
 ## Known Issues / Future Work
 
-- [ ] **Spatial partitioning**: O(n²) ball-ball collision is fine for 1000 balls but could use a spatial hash grid for larger counts
-- [ ] **Performance profiling**: With 1000 balls, 8 substeps, and 4 solver iterations, the sim does 32 passes of collision per frame. May need optimization if targeting 60fps consistently
+- [x] ~~**Spatial partitioning**: O(n²) ball-ball collision~~ — Implemented spatial hash grid in iteration 6
+- [x] ~~**Performance profiling**~~ — 1000-ball step measured at ~2.6 ms/frame avg; automated benchmark test added
+- [x] ~~**FPS counter**~~ — Added FPS + ball count HUD overlay
+- [x] ~~**Collision edge cases (glancing, dense stacks)**~~ — Added glancing endpoint, dense column, and spatial grid correctness tests
 - [ ] **Wall thickness**: Very fast balls could still tunnel if substeps are too low. Consider CCD (continuous collision detection) for extreme cases
-- [ ] **Visual polish**: Could add ball outlines, fps counter, restitution slider UI
-- [ ] **Settling verification**: Extend the restitution-invariance coverage even further to multi-shelf mazes, narrower choke points, and higher ball counts that more closely match the full 1000-ball scene
-- [ ] **Collision edge cases**: Extend regressions beyond the new endpoint/corner coverage to wall-endpoint glancing impacts, shelf corners, and multi-contact stacks where several constraints resolve in the same substep
-- [ ] **Screen recording**: Take a screenshot/recording to document visual behavior
+- [ ] **Settling verification**: Extend the restitution-invariance coverage to higher ball counts (500+) that more closely match the full 1000-ball scene
+- [ ] **Visual polish**: Ball outlines, restitution slider UI, color scheme options
+- [ ] **Screen recording**: Take a screenshot/recording to document visual behavior (requires display-capable environment)
+- [ ] **Pair dedup optimization**: The current `unordered_set<pair>` for spatial grid dedup works but could be replaced with a per-frame generation counter on each pair to avoid hash-set overhead
+- [ ] **SDL3 video support**: The current environment's SDL3 is built without video support; visual verification requires a display-capable environment

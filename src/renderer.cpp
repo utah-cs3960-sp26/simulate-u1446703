@@ -83,6 +83,20 @@ void Renderer::draw(const PhysicsWorld& world) {
     }
 }
 
+// ── drawHUD — FPS and ball count overlay ────────────────────────────
+void Renderer::drawHUD(float fps, int ballCount) {
+    // SDL3 provides SDL_RenderDebugText for simple text without loading fonts.
+    // It renders 8×8 monospaced characters at the given position.
+    char buf[64];
+    snprintf(buf, sizeof(buf), "FPS: %.0f  Balls: %d", fps, ballCount);
+
+    // Scale up the debug text for readability (2×).
+    SDL_SetRenderScale(renderer_, 2.0f, 2.0f);
+    SDL_SetRenderDrawColor(renderer_, 240, 240, 100, 255); // yellow
+    SDL_RenderDebugText(renderer_, 4.0f, 4.0f, buf);
+    SDL_SetRenderScale(renderer_, 1.0f, 1.0f);
+}
+
 // ── drawFilledCircle ────────────────────────────────────────────────
 // Renders a filled circle as a triangle fan using SDL_RenderGeometry.
 void Renderer::drawFilledCircle(float cx, float cy, float r,

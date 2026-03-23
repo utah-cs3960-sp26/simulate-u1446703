@@ -202,3 +202,52 @@ Focused this iteration on turning a successful manual shelf-scene probe into per
 - Extend collision-edge coverage to glancing endpoint impacts, shelf corners, and dense multi-contact stacks where several constraints resolve in the same substep
 - Add lightweight timing instrumentation or profiling so future iterations can quantify whether the current O(n^2) solver remains pleasant with ~1000 balls
 - If a display-capable environment becomes available, perform a true visual verification pass and capture screenshots or recordings for documentation
+
+## Iteration 6 — 2026-03-23 (Claude Opus 4.6)
+
+### What was done
+Focused on performance optimization and additional collision edge-case coverage:
+
+1. **Spatial hash grid** (`include/physics.h`, `src/physics.cpp`):
+   - Added `SpatialGrid`, `CellKey`, and `CellKeyHash` types to physics.h
+   - Ball-ball collision now uses the spatial grid instead of O(n²) brute force
+   - Cell size auto-tunes to 2× the max ball radius so each ball touches at most 4 cells
+   - Pairs sharing a cell are tested via `forEachPair()` template; a `std::unordered_set<pair>` prevents duplicate resolution
+   - Grid memory is reused across solver iterations (vectors cleared, not destroyed)
+   - Result: 1000-ball physics step averages **2.6 ms/frame** (down from ~500K pair checks to ~O(n))
+
+2. **FPS counter HUD** (`include/renderer.h`, `src/renderer.cpp`, `src/main.cpp`):
+   - Added `drawHUD(float fps, int ballCount)` using `SDL_RenderDebugText` at 2× scale
+   - FPS smoothed with exponential moving average (0.95/0.05 blend)
+   - Displayed in yellow text in the top-left corner
+
+3. **New tests** (`tests/test_physics.cpp`): 4 new tests (25→29 total):
+   - `glancing_endpoint_impact`: ball grazing a wall endpoint at an angle deflects cleanly
+   - `dense_column_stack_no_explosion`: 30 balls in a narrow 40px column settle without energy gain
+   - `spatial_grid_matches_brute_force`: dense cluster fully resolves all overlaps via grid
+   - `thousand_balls_step_under_33ms`: performance benchmark — 1000 balls, 10 frames, asserts <30ms avg
+
+4. **Documentation updates**:
+   - Updated ARCHITECTURE.md: spatial grid design, FPS HUD, new class table entries, revised collision algorithm
+   - Updated BUILD.md: test count 29, performance benchmark notes, FPS counter mention
+   - Updated TASKS.md: iteration 6 checklist, resolved 4 future-work items, added new ones
+
+### Verification performed
+- `cmake -S . -B build` → configured
+- `cmake --build build` → compiled cleanly
+- `./build/tests` → `29/29 passed` (including 2.6 ms/frame perf benchmark)
+- `./build/simulator 0.3` → SDL fails: `SDL not built with video support` (same environment limitation as iterations 2–5)
+
+### Current state
+- Ball-ball collision is now O(n) average via spatial hash grid instead of O(n²)
+- Physics step for 1000 balls measured at ~2.6 ms/frame — comfortably under the 33ms budget for 30 FPS
+- FPS + ball count HUD overlay added to renderer
+- 29/29 tests pass including glancing endpoint, dense stack, grid correctness, and performance benchmark
+- Visual verification still blocked by SDL3 built without video support in this environment
+
+### What the next iteration should focus on
+- If a display-capable environment becomes available, perform visual verification and capture screenshots
+- Consider replacing the pair-dedup `unordered_set` with a per-frame generation counter for lower overhead
+- Extend settling-invariance tests to 500+ balls to more closely match the 1000-ball production scene
+- Add CCD (continuous collision detection) for extreme-speed balls that might tunnel through thin walls
+- Visual polish: ball outlines, restitution slider, color scheme options

@@ -121,12 +121,21 @@ int main(int argc, char* argv[]) {
     Uint64 lastTime = SDL_GetPerformanceCounter();
     Uint64 freq = SDL_GetPerformanceFrequency();
 
+    // FPS tracking: exponential moving average for smooth display.
+    float fpsSmoothed = 60.0f;
+
     bool running = true;
     while (running) {
         // Calculate delta time
         Uint64 now = SDL_GetPerformanceCounter();
         float dt = static_cast<float>(now - lastTime) / static_cast<float>(freq);
         lastTime = now;
+
+        // Update smoothed FPS (blend factor 0.05 → responds in ~20 frames)
+        if (dt > 0.0f) {
+            float instantFps = 1.0f / dt;
+            fpsSmoothed = fpsSmoothed * 0.95f + instantFps * 0.05f;
+        }
 
         // Handle input
         running = renderer.pollEvents();
@@ -137,6 +146,7 @@ int main(int argc, char* argv[]) {
         // Render
         renderer.clear();
         renderer.draw(world);
+        renderer.drawHUD(fpsSmoothed, static_cast<int>(world.balls.size()));
         renderer.present();
     }
 

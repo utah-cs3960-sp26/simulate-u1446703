@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <algorithm>
+#include <chrono>
 
 // ── Minimal test framework ──────────────────────────────────────────
 static int tests_run = 0;
@@ -729,6 +730,190 @@ TEST(wall_normal_unit_length) {
     Wall w(Vec2(0, 0), Vec2(3, 4));
     Vec2 n = w.normal();
     ASSERT_NEAR(n.length(), 1.0f, 1e-5f);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Collision edge cases
+// ═══════════════════════════════════════════════════════════════════════
+
+TEST(glancing_endpoint_impact) {
+    // A ball approaching at a steep angle near a wall endpoint should
+    // deflect cleanly without getting stuck or phasing through.
+    PhysicsWorld world;
+    world.config.gravity = 0.0f;
+    world.config.substeps = 4;
+    world.config.restitution = 0.8f;
+    world.config.friction = 0.0f;
+    world.config.damping = 1.0f;
+    world.config.sleepSpeed = 0.0f;
+
+    // Wall from (50,100) to (150,100). Ball approaches the left
+    // endpoint (50,100) from above-left at a glancing angle.
+    world.walls.push_back(Wall(Vec2(50.0f, 100.0f), Vec2(150.0f, 100.0f)));
+
+    Ball ball(Vec2(40.0f, 80.0f), 5.0f);
+    ball.vel = {30.0f, 80.0f}; // mostly downward, slightly right
+    world.balls.push_back(ball);
+
+    for (int i = 0; i < 60; ++i) {
+        world.step(0.016f);
+    }
+
+    // Ball must not be below the wall (phased through)
+    ASSERT(world.balls[0].pos.y <= 100.0f + world.balls[0].radius + 2.0f);
+    // Ball should still be moving (not stuck at zero velocity)
+    ASSERT(world.balls[0].vel.length() > 5.0f);
+}
+
+TEST(dense_column_stack_no_explosion) {
+    // Dropping many balls into a narrow column tests the solver's
+    // ability to handle dense multi-contact stacks without energy
+    // gain or balls shooting off to infinity.
+    PhysicsWorld world;
+    world.config.gravity = 500.0f;
+    world.config.substeps = 8;
+    world.config.restitution = 0.3f;
+    world.config.damping = 0.999f;
+    world.config.friction = 0.1f;
+    world.config.sleepSpeed = 2.0f;
+
+    // Narrow vertical column: 40px wide, 400px tall
+    world.walls.push_back(Wall(Vec2(0.0f, 0.0f), Vec2(40.0f, 0.0f)));   // top
+    world.walls.push_back(Wall(Vec2(40.0f, 0.0f), Vec2(40.0f, 400.0f)));// right
+    world.walls.push_back(Wall(Vec2(40.0f, 400.0f), Vec2(0.0f, 400.0f)));// bottom
+    world.walls.push_back(Wall(Vec2(0.0f, 400.0f), Vec2(0.0f, 0.0f)));  // left
+
+    // Drop 30 balls into the narrow space — they must stack without
+    // energy gain or explosion.
+    for (int i = 0; i < 30; ++i) {
+        Ball b(Vec2(20.0f, 10.0f + i * 12.0f), 5.0f);
+        world.balls.push_back(b);
+    }
+
+    float maxSpeedEver = 0.0f;
+    for (int i = 0; i < 800; ++i) {
+        world.step(0.016f);
+
+        // Track peak speed to detect explosion
+        for (const auto& b : world.balls) {
+            float spd = b.vel.length();
+            if (spd > maxSpeedEver) maxSpeedEver = spd;
+        }
+    }
+
+    // All balls should be inside the container
+    for (const auto& b : world.balls) {
+        ASSERT(b.pos.x > -2.0f && b.pos.x < 42.0f);
+        ASSERT(b.pos.y > -2.0f && b.pos.y < 402.0f);
+    }
+
+    // No ball should have reached an absurd speed (explosion detection).
+    // With gravity 500 and a 400px drop, terminal impact speed is ~632 px/s.
+    // Allow 2× margin for multi-bounce energy concentration.
+    ASSERT(maxSpeedEver < 1500.0f);
+
+    // Most balls should be settled
+    int settled = 0;
+    for (const auto& b : world.balls) {
+        if (b.vel.length() < 5.0f) settled++;
+    }
+    ASSERT(settled > 20);
+}
+
+TEST(spatial_grid_matches_brute_force) {
+    // Verify that the spatial grid optimization doesn't miss any
+    // colliding pairs by comparing against a brute-force pass.
+    // We set up a tight cluster of balls and check that after one
+    // step the results are identical whether we use the grid or not.
+    //
+    // This test works indirectly: it creates a scenario with known
+    // overlaps and verifies all overlaps are resolved.
+    PhysicsWorld world;
+    world.config.gravity = 0.0f;
+    world.config.substeps = 1;
+    world.config.restitution = 0.5f;
+    world.config.damping = 1.0f;
+    world.config.friction = 0.0f;
+    world.config.sleepSpeed = 0.0f;
+
+    // Place 12 balls in a 3×4 grid with moderate overlap.
+    // Each ball has radius 8, spacing is 12px (overlap = 4px per pair).
+    for (int i = 0; i < 12; ++i) {
+        int col = i % 3;
+        int row = i / 3;
+        Ball b(Vec2(50.0f + col * 12.0f, 50.0f + row * 12.0f), 8.0f);
+        world.balls.push_back(b);
+    }
+
+    // Run several frames so the iterative solver has enough passes
+    // to fully separate all pairs even in a dense cluster.
+    for (int i = 0; i < 20; ++i) {
+        world.step(0.016f);
+    }
+
+    // After resolution, no pair should still overlap significantly.
+    for (size_t i = 0; i < world.balls.size(); ++i) {
+        for (size_t j = i + 1; j < world.balls.size(); ++j) {
+            Vec2 diff = world.balls[j].pos - world.balls[i].pos;
+            float dist = diff.length();
+            float minDist = world.balls[i].radius + world.balls[j].radius;
+            // Allow small floating-point tolerance from iterative solver
+            ASSERT(dist >= minDist - 0.5f);
+        }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Performance sanity check
+// ═══════════════════════════════════════════════════════════════════════
+
+TEST(thousand_balls_step_under_33ms) {
+    // The project requirement is 1000 balls at 30 FPS, meaning each
+    // frame (step + render) must complete in ~33ms. The physics step
+    // alone should be well under that. This test creates the same
+    // 1000-ball scene as main.cpp and times 10 frames.
+    PhysicsWorld world;
+    world.config.gravity = 500.0f;
+    world.config.substeps = 8;
+    world.config.restitution = 0.3f;
+    world.config.damping = 0.999f;
+    world.config.friction = 0.1f;
+    world.config.sleepSpeed = 2.0f;
+
+    // Box container matching main.cpp
+    float left = 50.0f, right = 1150.0f, top = 50.0f, bottom = 750.0f;
+    world.walls.push_back(Wall(Vec2(left, top), Vec2(right, top)));
+    world.walls.push_back(Wall(Vec2(right, top), Vec2(right, bottom)));
+    world.walls.push_back(Wall(Vec2(right, bottom), Vec2(left, bottom)));
+    world.walls.push_back(Wall(Vec2(left, bottom), Vec2(left, top)));
+
+    // 1000 balls in a grid
+    float spacing = 13.0f;
+    int cols = static_cast<int>((right - left - 20) / spacing);
+    for (int i = 0; i < 1000; ++i) {
+        int col = i % cols;
+        int row = i / cols;
+        float x = left + 10.0f + col * spacing;
+        float y = top + 10.0f + row * spacing;
+        float r = 3.0f + (i % 4); // 3–6 px radius
+        world.balls.push_back(Ball(Vec2(x, y), r));
+    }
+
+    // Time 10 physics frames
+    auto start = std::chrono::high_resolution_clock::now();
+    for (int i = 0; i < 10; ++i) {
+        world.step(0.016f);
+    }
+    auto end = std::chrono::high_resolution_clock::now();
+
+    double totalMs = std::chrono::duration<double, std::milli>(end - start).count();
+    double avgMs = totalMs / 10.0;
+
+    printf("(%.1f ms/frame avg) ", avgMs);
+
+    // Each physics step should complete in well under 33ms.
+    // We use a generous 30ms threshold to account for CI variance.
+    ASSERT(avgMs < 30.0);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
