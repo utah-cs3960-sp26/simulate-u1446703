@@ -4,5 +4,7 @@ Use SDL3 via C++. Running your application should set up an initial "scene" with
 
 The hard part is going to be making sure the balls don't end up overlapping or squeezing through the walls. You'll also sometimes see balls start vibrating really fast. Sometimes they vibrate fast and faster and eventually shoot off to infinity. Make the restitution amount configurable; you should see things settle down faster with less restitution, but the final "settled" state should take up the same amount of space no matter the amount of restitution.
 
+Make it possible to describe the initial scene in a CSV file; the CSV file should have one row per ball and list a starting position and a color. The CSV should also be capable of describing walls in a similar manor. Make the simulator save the final positions to a similar CSV file. Add a tool that takes an initial scene CSV file and assign colors based on where the final balls end up and what color a given image has at that location.
+
 # Implementation notes:
 - The project should be able to comfortably render 1000 balls at 30 FPS most of the time.
