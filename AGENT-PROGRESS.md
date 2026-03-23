@@ -251,3 +251,47 @@ Focused on performance optimization and additional collision edge-case coverage:
 - Extend settling-invariance tests to 500+ balls to more closely match the 1000-ball production scene
 - Add CCD (continuous collision detection) for extreme-speed balls that might tunnel through thin walls
 - Visual polish: ball outlines, restitution slider, color scheme options
+
+## Iteration 7 — 2026-03-23 (Claude Opus 4.6)
+
+### What was done
+Focused on performance optimization and large-scale test coverage:
+
+1. **Pair-dedup removal** (`src/physics.cpp`):
+   - Removed the `unordered_set<pair>` and `PairHash` used to deduplicate spatial grid pairs
+   - Instead, rely on idempotency: after the first resolution separates a pair, subsequent duplicate callbacks find no overlap and early-out
+   - This eliminates per-frame hash-set allocation and lookup overhead
+   - Result: 1000-ball physics step dropped from **2.4 ms/frame** to **0.8 ms/frame** (~3× speedup)
+
+2. **Renderer optimization** (`src/renderer.cpp`):
+   - Replaced per-call `std::vector<SDL_Vertex>` and `std::vector<int>` with precomputed trig tables and a static vertex buffer
+   - The `CircleGeometry` struct computes sine/cosine values and the index list once at startup
+   - Eliminates 1000+ heap allocations per frame for circle drawing
+
+3. **Large-scale tests** (`tests/test_physics.cpp`): 2 new tests (29→31 total):
+   - `large_scale_no_overlap_after_settling`: 500 balls settle with zero significant overlaps, all contained
+   - `large_scale_restitution_preserves_packed_size`: 500-ball settling-invariance across restitution 0.0/0.3/0.9
+
+4. **Documentation updates**:
+   - Updated ARCHITECTURE.md: idempotent pair handling, renderer optimization, large-scale coverage
+   - Updated BUILD.md: test count 31, updated performance numbers
+   - Updated TASKS.md: iteration 7 checklist, resolved 3 future-work items
+
+### Verification performed
+- `cmake -S . -B build` → configured
+- `cmake --build build` → compiled cleanly
+- `./build/tests` → `31/31 passed` (including 0.8 ms/frame perf benchmark)
+- `SDL_VIDEODRIVER=dummy timeout 3 ./build/simulator 0.3` → SDL still fails: `SDL not built with video support` (same environment limitation)
+
+### Current state
+- Physics step for 1000 balls: **0.8 ms/frame** (was 2.4 ms, now 3× faster)
+- Renderer eliminates per-ball heap allocations via precomputed trig + static buffers
+- 31/31 tests pass including 500-ball no-overlap and settling-invariance
+- Visual verification still blocked by SDL3 built without video support
+
+### What the next iteration should focus on
+- If a display-capable environment becomes available, perform visual verification and capture screenshots
+- Add CCD (continuous collision detection) for extreme-speed balls that might tunnel through thin walls
+- Visual polish: ball outlines, restitution slider UI, color scheme options
+- Consider SIMD vectorization of the physics step for further performance gains
+- The `SpatialGrid::clear()` loop could be replaced with a generation counter on each cell to avoid iterating all cells

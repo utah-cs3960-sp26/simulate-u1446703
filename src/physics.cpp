@@ -11,7 +11,6 @@
 #include "physics.h"
 #include <algorithm>
 #include <cmath>
-#include <unordered_set>
 
 // ═══════════════════════════════════════════════════════════════════════
 // SpatialGrid implementation
@@ -198,15 +197,6 @@ void PhysicsWorld::solveBallWallCollisions() {
 //      the collision normal, scaled by restitution.
 // ═══════════════════════════════════════════════════════════════════════
 
-// Hash for (int, int) pairs used to deduplicate grid-reported collisions.
-struct PairHash {
-    std::size_t operator()(const std::pair<int,int>& p) const {
-        // Cantor pairing gives a unique mapping for ordered (i,j) where i<j.
-        return static_cast<std::size_t>(p.first) * 100003 +
-               static_cast<std::size_t>(p.second);
-    }
-};
-
 void PhysicsWorld::solveBallBallCollisions() {
     const int n = static_cast<int>(balls.size());
     if (n < 2) return;
@@ -225,13 +215,13 @@ void PhysicsWorld::solveBallBallCollisions() {
         grid_.insert(i, balls[i]);
     }
 
-    // Track which pairs have already been resolved this iteration to
-    // avoid duplicate work when a pair appears in multiple cells.
-    std::unordered_set<std::pair<int,int>, PairHash> visited;
+    // NOTE: forEachPair may report the same (i,j) from multiple cells.
+    // We do NOT use a visited set — instead we rely on idempotency:
+    // after the first resolution pushes a pair apart, subsequent calls
+    // for the same pair find distSq >= minDist² and early-out cheaply.
+    // This avoids per-frame hash-set allocation and lookup overhead.
 
     grid_.forEachPair([&](int i, int j) {
-        // Skip if already processed this iteration.
-        if (!visited.insert({i, j}).second) return;
 
         Ball& a = balls[i];
         Ball& b = balls[j];

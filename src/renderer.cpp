@@ -97,13 +97,37 @@ void Renderer::drawHUD(float fps, int ballCount) {
     SDL_SetRenderScale(renderer_, 1.0f, 1.0f);
 }
 
+// ── Precomputed unit circle for drawFilledCircle ────────────────────
+// Sine/cosine values and the triangle-fan index list are constant for
+// every circle, so we compute them once at startup. Only the vertex
+// positions and colors vary per call.
+static struct CircleGeometry {
+    float cosTable[CIRCLE_SEGMENTS + 1];
+    float sinTable[CIRCLE_SEGMENTS + 1];
+    int   indices[CIRCLE_SEGMENTS * 3];
+
+    CircleGeometry() {
+        for (int i = 0; i <= CIRCLE_SEGMENTS; ++i) {
+            float angle = (2.0f * static_cast<float>(M_PI) * i) / CIRCLE_SEGMENTS;
+            cosTable[i] = cosf(angle);
+            sinTable[i] = sinf(angle);
+        }
+        for (int i = 0; i < CIRCLE_SEGMENTS; ++i) {
+            indices[i * 3 + 0] = 0;       // center
+            indices[i * 3 + 1] = i + 1;   // current ring vertex
+            indices[i * 3 + 2] = i + 2;   // next ring vertex
+        }
+    }
+} circleGeo;
+
 // ── drawFilledCircle ────────────────────────────────────────────────
 // Renders a filled circle as a triangle fan using SDL_RenderGeometry.
+// Uses precomputed trig tables and a static vertex buffer to avoid
+// per-call heap allocations (important when drawing 1000+ balls/frame).
 void Renderer::drawFilledCircle(float cx, float cy, float r,
                                  uint8_t red, uint8_t green, uint8_t blue) {
-    // Build triangle fan: center vertex + ring of vertices around it
-    const int numVerts = CIRCLE_SEGMENTS + 2; // center + ring + closing
-    std::vector<SDL_Vertex> verts(numVerts);
+    constexpr int numVerts = CIRCLE_SEGMENTS + 2; // center + ring + closing
+    static SDL_Vertex verts[numVerts];
 
     SDL_FColor color = {red / 255.0f, green / 255.0f, blue / 255.0f, 1.0f};
 
@@ -111,23 +135,14 @@ void Renderer::drawFilledCircle(float cx, float cy, float r,
     verts[0].position = {cx, cy};
     verts[0].color = color;
 
-    // Ring vertices
+    // Ring vertices using precomputed trig
     for (int i = 0; i <= CIRCLE_SEGMENTS; ++i) {
-        float angle = (2.0f * M_PI * i) / CIRCLE_SEGMENTS;
-        verts[i + 1].position = {cx + r * cosf(angle), cy + r * sinf(angle)};
+        verts[i + 1].position = {cx + r * circleGeo.cosTable[i],
+                                  cy + r * circleGeo.sinTable[i]};
         verts[i + 1].color = color;
     }
 
-    // Build index list for triangle fan
-    std::vector<int> indices;
-    indices.reserve(CIRCLE_SEGMENTS * 3);
-    for (int i = 0; i < CIRCLE_SEGMENTS; ++i) {
-        indices.push_back(0);       // center
-        indices.push_back(i + 1);   // current ring vertex
-        indices.push_back(i + 2);   // next ring vertex
-    }
-
     SDL_RenderGeometry(renderer_, nullptr,
-                       verts.data(), numVerts,
-                       indices.data(), static_cast<int>(indices.size()));
+                       verts, numVerts,
+                       circleGeo.indices, CIRCLE_SEGMENTS * 3);
 }

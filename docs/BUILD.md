@@ -27,7 +27,7 @@ cd build
 ./tests
 ```
 
-Expected: 29/29 tests pass.
+Expected: 31/31 tests pass.
 
 ## Run Simulator
 
@@ -44,7 +44,8 @@ cd build
 - The settling regressions now cover both a plain container and a more simulator-like shelf scene with mixed ball radii, so the restitution invariant is checked against more realistic contact geometry
 - The collision suite also verifies that equal-mass head-on impacts produce the expected post-collision velocities, which guards the ball-ball restitution math directly
 - The wall-contact regressions now also verify exact endpoint overlaps and sealed corner joints, which guards the remaining wall-edge cases directly
-- The performance test verifies that the 1000-ball physics step completes in well under 33ms (measured ~2.6 ms avg with spatial hash grid)
+- The large-scale tests verify no-overlap and settling invariance at 500 balls, more closely matching the 1000-ball production scene
+- The performance test verifies that the 1000-ball physics step completes in well under 33ms (measured ~0.8 ms avg with idempotent spatial grid)
 - The FPS counter and ball count are displayed in the top-left corner of the window
 - Press **ESC** or **Q** to quit
 

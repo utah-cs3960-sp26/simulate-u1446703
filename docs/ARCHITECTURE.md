@@ -13,7 +13,7 @@ simulate-u1446703/
 │   ├── renderer.cpp        # SDL3 rendering (circles, lines)
 │   └── main.cpp            # Entry point, scene setup, main loop
 ├── tests/
-│   └── test_physics.cpp    # 29 unit tests for physics engine
+│   └── test_physics.cpp    # 31 unit tests for physics engine
 ├── docs/
 │   ├── ARCHITECTURE.md     # This file
 │   └── BUILD.md            # Build instructions
@@ -29,16 +29,18 @@ simulate-u1446703/
 - **Position-based correction + impulse**: Overlapping objects are first separated positionally, then velocity impulses are applied. This prevents the "jitter→explode" failure mode.
 - **Correct ball-ball restitution response**: The pair solver now computes relative velocity using the standard normal direction (A→B) so approaching balls receive the intended restitution impulse instead of only positional separation.
 - **Endpoint-aware wall contacts**: Exact wall-endpoint overlaps now distinguish point contacts from segment interiors so a ball resting exactly on a corner can reflect away from the endpoint instead of only mirroring the segment axis.
-- **Spatial hash grid**: Ball-ball collision uses a spatial hash grid (`SpatialGrid` in physics.h) that buckets balls into uniform cells. Only pairs sharing a cell are tested, reducing average cost from O(n²) to ~O(n). Cell size is auto-tuned to 2× the max ball radius. A pair-visited set prevents duplicate resolution. With 1000 balls the physics step averages ~2.6 ms/frame.
+- **Spatial hash grid**: Ball-ball collision uses a spatial hash grid (`SpatialGrid` in physics.h) that buckets balls into uniform cells. Only pairs sharing a cell are tested, reducing average cost from O(n²) to ~O(n). Cell size is auto-tuned to 2× the max ball radius. Duplicate pairs from overlapping cells are handled by idempotency: after the first resolution separates a pair, subsequent calls find no overlap and early-out. This avoids per-frame hash-set overhead. With 1000 balls the physics step averages ~0.8 ms/frame.
 - **Sleep threshold**: Balls below a velocity threshold are zeroed out to help convergence.
 - **Settling invariant coverage**: The regression suite checks that changing restitution affects decay time, but not the final packed footprint of a settled pile.
 - **Shelf-scene settling coverage**: The regression suite now also checks that the same restitution invariant holds in a more simulator-like scene with internal shelves and mixed-radius balls.
+- **Large-scale coverage (500 balls)**: No-overlap and settling-invariance tests at 500 balls more closely match the 1000-ball production scene and catch solver bugs that only manifest at scale.
 - **Momentum-transfer regression coverage**: The tests now assert post-collision velocities for equal-mass head-on impacts so future refactors cannot silently break restitution handling.
 - **Wall-joint regression coverage**: The test suite now covers exact endpoint overlaps and sealed corner joints so wall-contact edge cases are exercised as directly as the ball-ball impulse path.
 
 ### Renderer (renderer.h / renderer.cpp)
 
 - Circles drawn as triangle fans via `SDL_RenderGeometry` (16 segments each).
+- Precomputed trig tables and static vertex buffer eliminate per-ball heap allocation.
 - Balls colored by speed: blue (slow) → green (medium) → red (fast).
 - Walls drawn as white lines.
 - FPS + ball count HUD overlay via `SDL_RenderDebugText` (scaled 2×).

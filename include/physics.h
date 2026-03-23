@@ -181,6 +181,8 @@ private:
     // Detect and resolve ball-vs-ball overlaps using the spatial grid.
     // Only tests pairs that share a grid cell, bringing average cost
     // from O(n²) down to ~O(n) for uniformly distributed balls.
+    // Duplicate pairs from overlapping cells are handled by idempotency
+    // (resolved pairs no longer overlap, so re-checks are cheap no-ops).
     void solveBallBallCollisions();
 
     // Zero out velocity of nearly-stopped balls to help settling.

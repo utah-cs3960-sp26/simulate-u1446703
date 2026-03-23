@@ -917,6 +917,132 @@ TEST(thousand_balls_step_under_33ms) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// Large-scale tests (500+ balls)
+// ═══════════════════════════════════════════════════════════════════════
+
+// Helper: build a 500-ball world in a container matching the simulator layout.
+// Deterministic placement (no randomness) so results are reproducible.
+static PhysicsWorld makeLargeWorld(float restitution) {
+    PhysicsWorld world;
+    world.config.gravity = 500.0f;
+    world.config.substeps = 8;
+    world.config.restitution = restitution;
+    world.config.damping = 0.999f;
+    world.config.friction = 0.1f;
+    world.config.sleepSpeed = 2.0f;
+
+    // Container similar to the real simulator scene
+    float left = 50.0f, right = 750.0f, top = 50.0f, bottom = 600.0f;
+    world.walls.push_back(Wall(Vec2(left, top), Vec2(right, top)));
+    world.walls.push_back(Wall(Vec2(right, top), Vec2(right, bottom)));
+    world.walls.push_back(Wall(Vec2(right, bottom), Vec2(left, bottom)));
+    world.walls.push_back(Wall(Vec2(left, bottom), Vec2(left, top)));
+
+    // One angled shelf for complexity
+    float midX = (left + right) / 2.0f;
+    float shelfY = top + (bottom - top) * 0.4f;
+    world.walls.push_back(Wall(Vec2(left, shelfY), Vec2(midX - 30.0f, shelfY + 40.0f)));
+
+    // 500 balls in a grid with mixed radii
+    float spacing = 14.0f;
+    int cols = static_cast<int>((right - left - 20.0f) / spacing);
+    for (int i = 0; i < 500; ++i) {
+        int col = i % cols;
+        int row = i / cols;
+        float x = left + 10.0f + col * spacing;
+        float y = top + 10.0f + row * spacing;
+        float r = 3.0f + static_cast<float>(i % 4); // 3–6 px radius
+        world.balls.push_back(Ball(Vec2(x, y), r));
+    }
+
+    return world;
+}
+
+TEST(large_scale_no_overlap_after_settling) {
+    // After settling 500 balls, no pair should overlap beyond a small
+    // floating-point tolerance. This catches solver bugs that only
+    // manifest at higher ball counts where dense multi-contact stacking
+    // is more common than in the smaller test fixtures.
+    PhysicsWorld world = makeLargeWorld(0.3f);
+
+    // Run for enough simulated time to fully settle
+    for (int i = 0; i < 1200; ++i) {
+        world.step(0.016f);
+    }
+
+    // Verify no pair overlaps
+    int overlapCount = 0;
+    for (size_t i = 0; i < world.balls.size(); ++i) {
+        for (size_t j = i + 1; j < world.balls.size(); ++j) {
+            Vec2 diff = world.balls[j].pos - world.balls[i].pos;
+            float dist = diff.length();
+            float minDist = world.balls[i].radius + world.balls[j].radius;
+            if (dist < minDist - 1.0f) {
+                overlapCount++;
+            }
+        }
+    }
+    // Allow zero significant overlaps (>1px penetration)
+    ASSERT(overlapCount == 0);
+
+    // All balls should be inside the container
+    for (const auto& b : world.balls) {
+        ASSERT(b.pos.x > 45.0f && b.pos.x < 755.0f);
+        ASSERT(b.pos.y > 45.0f && b.pos.y < 605.0f);
+    }
+
+    // Most balls should have settled
+    int settled = 0;
+    for (const auto& b : world.balls) {
+        if (b.vel.length() < 5.0f) settled++;
+    }
+    ASSERT(settled > 400); // At least 80% settled
+}
+
+TEST(large_scale_restitution_preserves_packed_size) {
+    // Extends the settling-invariance requirement to 500 balls, which
+    // more closely matches the 1000-ball production scene than the
+    // 50-ball and 120-ball fixtures from earlier iterations.
+    auto runAndMeasure = [](float restitution) -> SettledBounds {
+        PhysicsWorld world = makeLargeWorld(restitution);
+        for (int i = 0; i < 1500; ++i) {
+            world.step(0.016f);
+        }
+        SettledBounds bounds;
+        bounds.minX = 1e9f; bounds.maxX = -1e9f;
+        bounds.minY = 1e9f; bounds.maxY = -1e9f;
+        bounds.maxSpeed = 0.0f;
+        for (const auto& b : world.balls) {
+            bounds.minX = std::min(bounds.minX, b.pos.x - b.radius);
+            bounds.maxX = std::max(bounds.maxX, b.pos.x + b.radius);
+            bounds.minY = std::min(bounds.minY, b.pos.y - b.radius);
+            bounds.maxY = std::max(bounds.maxY, b.pos.y + b.radius);
+            bounds.maxSpeed = std::max(bounds.maxSpeed, b.vel.length());
+        }
+        return bounds;
+    };
+
+    const SettledBounds low  = runAndMeasure(0.0f);
+    const SettledBounds med  = runAndMeasure(0.3f);
+    const SettledBounds high = runAndMeasure(0.9f);
+
+    // All should be fully settled
+    ASSERT_NEAR(low.maxSpeed, 0.0f, 0.05f);
+    ASSERT_NEAR(med.maxSpeed, 0.0f, 0.05f);
+    ASSERT_NEAR(high.maxSpeed, 0.0f, 0.05f);
+
+    // Final packing dimensions should match across restitution values.
+    // Allow slightly more tolerance at 500 balls since the pile is taller
+    // and minor stacking variations can compound.
+    ASSERT_NEAR(low.width(), med.width(), 2.0f);
+    ASSERT_NEAR(low.width(), high.width(), 2.0f);
+    ASSERT_NEAR(low.height(), med.height(), 2.0f);
+    ASSERT_NEAR(low.height(), high.height(), 2.0f);
+    ASSERT_NEAR(low.minY, med.minY, 2.0f);
+    ASSERT_NEAR(low.minY, high.minY, 2.0f);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // Main — run all tests
 // ═══════════════════════════════════════════════════════════════════════
 

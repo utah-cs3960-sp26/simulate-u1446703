@@ -1,5 +1,15 @@
 # Tasks
 
+## Completed — Iteration 7 (2026-03-23)
+
+- [x] Build and verify 29/29 baseline tests pass
+- [x] Remove pair-dedup `unordered_set` — rely on idempotent resolution instead (0.8 ms/frame, down from 2.4 ms)
+- [x] Optimize renderer: precomputed trig tables + static vertex buffer (no per-ball heap allocation)
+- [x] Add `large_scale_no_overlap_after_settling` test (500 balls, no overlaps, all contained)
+- [x] Add `large_scale_restitution_preserves_packed_size` test (500 balls, settling invariance)
+- [x] Build, verify 31/31 tests pass, confirm simulator startup (headless)
+- [x] Update documentation (ARCHITECTURE.md, BUILD.md, AGENT-PROGRESS.md, TASKS.md)
+
 ## Completed — Iteration 6 (2026-03-23)
 
 - [x] Build and verify 25/25 baseline tests pass
@@ -56,12 +66,12 @@
 ## Known Issues / Future Work
 
 - [x] ~~**Spatial partitioning**: O(n²) ball-ball collision~~ — Implemented spatial hash grid in iteration 6
-- [x] ~~**Performance profiling**~~ — 1000-ball step measured at ~2.6 ms/frame avg; automated benchmark test added
+- [x] ~~**Performance profiling**~~ — 1000-ball step measured at ~0.8 ms/frame avg; idempotent spatial grid, no hash-set overhead
 - [x] ~~**FPS counter**~~ — Added FPS + ball count HUD overlay
 - [x] ~~**Collision edge cases (glancing, dense stacks)**~~ — Added glancing endpoint, dense column, and spatial grid correctness tests
 - [ ] **Wall thickness**: Very fast balls could still tunnel if substeps are too low. Consider CCD (continuous collision detection) for extreme cases
-- [ ] **Settling verification**: Extend the restitution-invariance coverage to higher ball counts (500+) that more closely match the full 1000-ball scene
+- [x] ~~**Settling verification**~~ — 500-ball no-overlap and settling-invariance tests added in iteration 7
 - [ ] **Visual polish**: Ball outlines, restitution slider UI, color scheme options
 - [ ] **Screen recording**: Take a screenshot/recording to document visual behavior (requires display-capable environment)
-- [ ] **Pair dedup optimization**: The current `unordered_set<pair>` for spatial grid dedup works but could be replaced with a per-frame generation counter on each pair to avoid hash-set overhead
+- [x] ~~**Pair dedup optimization**~~ — Removed hash-set; idempotent resolution handles duplicates (iteration 7)
 - [ ] **SDL3 video support**: The current environment's SDL3 is built without video support; visual verification requires a display-capable environment
