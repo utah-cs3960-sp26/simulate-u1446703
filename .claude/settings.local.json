@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(echo \"exit: $?\")",
+      "Bash(git fsck:*)",
+      "Bash(git log:*)",
+      "Bash(GIT_TRACE=1 git fetch --filter=blob:none origin)",
+      "Bash(git ls-tree:*)",
+      "Bash(git hash-object:*)",
+      "Bash(xargs -I{} git cat-file -p {})",
+      "Bash(while read:*)",
+      "Bash(do git:*)",
+      "Bash(echo \"MISSING: $hash\")",
+      "Bash(done)",
+      "Bash(git config:*)",
+      "Bash(chmod -R a+rwX .git/objects/)",
+      "Bash(sudo -n true)",
+      "Bash(echo \"MISSING in $sha: $blob\" done done)",
+      "Bash(git push:*)",
+      "Bash(env)",
+      "Bash(gh auth:*)"
+    ]
+  }
+}
