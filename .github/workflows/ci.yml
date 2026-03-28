@@ -1,0 +1,71 @@
+# CI workflow for the 2D physics simulator.
+# Builds the project, runs all unit tests, and verifies headless simulation.
+# Triggered on push/PR to main.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake build-essential libx11-dev libxext-dev
+
+      - name: Build SDL3 from source
+        run: |
+          git clone --depth 1 --branch release-3.2.4 https://github.com/libsdl-org/SDL.git /tmp/SDL3
+          cmake -S /tmp/SDL3 -B /tmp/SDL3/build \
+            -DSDL_VIDEO=ON \
+            -DSDL_OFFSCREEN=ON \
+            -DSDL_X11=OFF \
+            -DSDL_WAYLAND=OFF \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build /tmp/SDL3/build -j$(nproc)
+          sudo cmake --install /tmp/SDL3/build
+
+      - name: Configure project
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build project
+        run: cmake --build build -j$(nproc)
+
+      - name: Run unit tests
+        run: ./build/tests
+
+      - name: Run headless simulation (restitution 0.3)
+        run: |
+          mkdir -p screenshots
+          ./build/simulator --headless 0.3 300 screenshots/ci_r03
+
+      - name: Verify KE reaches zero
+        run: |
+          # Run a longer sim and check final KE
+          output=$(./build/simulator --headless 0.0 400 /tmp/ci_verify 2>&1)
+          echo "$output"
+          # The last KE line should show 0.0
+          echo "$output" | grep "KE=0.0" || { echo "FAIL: KE did not reach 0"; exit 1; }
+
+      - name: Test scene_gen pipeline
+        run: |
+          ./build/scene_gen /tmp/ci_scene.csv --balls 100 --layout grid --seed 42
+          ./build/simulator --headless --load-csv /tmp/ci_scene.csv --save-csv /tmp/ci_output.csv 0.3 200 /tmp/ci_pipeline
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: simulation-screenshots
+          path: screenshots/*.bmp
+          retention-days: 7

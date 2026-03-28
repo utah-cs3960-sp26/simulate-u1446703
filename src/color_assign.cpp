@@ -1,17 +1,17 @@
 // color_assign.cpp — Color assignment tool for the physics simulator.
 //
-// Takes an initial scene CSV file and a BMP image. Runs the simulation
-// until the balls settle, then assigns each ball a color based on the
-// pixel in the image at the ball's final position. Writes the result
-// to an output CSV with the original starting positions but the new
-// colors derived from the final resting positions.
+// Takes an initial scene CSV file and an image (BMP, PNG, JPG, TGA).
+// Runs the simulation until the balls settle, then assigns each ball a
+// color based on the pixel in the image at the ball's final position.
+// Writes the result to an output CSV with the original starting positions
+// but the new colors derived from the final resting positions.
 //
 // Usage:
-//   ./color_assign <input.csv> <image.bmp> <output.csv> [restitution] [frames]
+//   ./color_assign <input.csv> <image> <output.csv> [restitution] [frames]
 //
 // Arguments:
 //   input.csv    — Initial scene CSV (balls + walls)
-//   image.bmp    — BMP image to sample colors from
+//   image        — Image to sample colors from (BMP, PNG, JPG, TGA)
 //   output.csv   — Output CSV with colors assigned based on final positions
 //   restitution  — Coefficient of restitution [0..1], default 0.3
 //   frames       — Number of simulation frames to run, default 600
@@ -24,36 +24,67 @@
 
 #include "physics.h"
 #include "csv_io.h"
-#include <SDL3/SDL.h>
+
+// stb_image for multi-format image loading (PNG, JPG, BMP, TGA, etc.)
+// The implementation is compiled here; other files only include the header.
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <vector>
+#include <string>
 
-// ── Sample a pixel color from an SDL_Surface at (x, y) ─────────────
-// Returns false if (x,y) is out of bounds. Uses SDL_ReadSurfacePixel
-// which handles all pixel formats transparently.
-static bool samplePixel(SDL_Surface* surface, int x, int y,
-                        uint8_t& r, uint8_t& g, uint8_t& b) {
-    if (x < 0 || x >= surface->w || y < 0 || y >= surface->h) {
-        return false;
+// ── Image wrapper ──────────────────────────────────────────────────
+// Holds loaded image data from stb_image. Provides pixel sampling at
+// arbitrary (x, y) coordinates. Supports any format stb_image can
+// decode: PNG, JPG, BMP, TGA, PSD, GIF, HDR, PIC, PNM.
+struct Image {
+    unsigned char* data = nullptr;
+    int width = 0;
+    int height = 0;
+    int channels = 0; // Actual channels in loaded data (always forced to 3)
+
+    ~Image() {
+        if (data) stbi_image_free(data);
     }
 
-    // SDL3 provides SDL_ReadSurfacePixel for format-independent reads
-    Uint8 pr, pg, pb, pa;
-    if (!SDL_ReadSurfacePixel(surface, x, y, &pr, &pg, &pb, &pa)) {
-        return false;
+    // Load an image file. Returns true on success.
+    bool load(const char* path) {
+        // Force 3 channels (RGB) regardless of source format.
+        // This simplifies pixel sampling — no alpha handling needed.
+        data = stbi_load(path, &width, &height, &channels, 3);
+        if (!data) {
+            fprintf(stderr, "Failed to load image '%s': %s\n",
+                    path, stbi_failure_reason());
+            return false;
+        }
+        channels = 3; // We forced 3 channels above
+        return true;
     }
-    r = pr;
-    g = pg;
-    b = pb;
-    return true;
-}
+
+    // Sample RGB color at pixel (x, y). Returns false if out of bounds.
+    bool sample(int x, int y, uint8_t& r, uint8_t& g, uint8_t& b) const {
+        if (x < 0 || x >= width || y < 0 || y >= height) return false;
+        const unsigned char* pixel = data + (y * width + x) * 3;
+        r = pixel[0];
+        g = pixel[1];
+        b = pixel[2];
+        return true;
+    }
+
+    // Non-copyable (owns stb-allocated memory)
+    Image() = default;
+    Image(const Image&) = delete;
+    Image& operator=(const Image&) = delete;
+};
 
 int main(int argc, char* argv[]) {
     if (argc < 4) {
-        fprintf(stderr, "Usage: %s <input.csv> <image.bmp> <output.csv> [restitution] [frames]\n",
+        fprintf(stderr, "Usage: %s <input.csv> <image> <output.csv> [restitution] [frames]\n",
                 argv[0]);
+        fprintf(stderr, "\nSupported image formats: BMP, PNG, JPG, TGA, PSD, GIF, HDR, PIC, PNM\n");
         return 1;
     }
 
@@ -124,15 +155,13 @@ int main(int argc, char* argv[]) {
     printf("Simulation complete. KE=%.1f\n", world.totalKineticEnergy());
 
     // ── Phase 3: Load the image and sample colors ───────────────────
-    // We need SDL initialized just enough to use SDL_LoadBMP and pixel
-    // operations. No video driver required.
-    SDL_Surface* image = SDL_LoadBMP(imagePath);
-    if (!image) {
-        fprintf(stderr, "Failed to load image '%s': %s\n", imagePath, SDL_GetError());
+    // Uses stb_image for multi-format support (PNG, JPG, BMP, TGA, etc.)
+    Image image;
+    if (!image.load(imagePath)) {
         return 1;
     }
 
-    printf("Image loaded: %dx%d\n", image->w, image->h);
+    printf("Image loaded: %dx%d\n", image.width, image.height);
 
     // For each ball, sample the image at its final position.
     // If the final position is out of bounds, assign a default gray.
@@ -144,14 +173,14 @@ int main(int argc, char* argv[]) {
         // The image is assumed to cover the same coordinate space as
         // the simulation window (WINDOW_WIDTH x WINDOW_HEIGHT).
         // Scale proportionally if the image is a different size.
-        float scaleX = static_cast<float>(image->w) / 1200.0f; // WINDOW_WIDTH
-        float scaleY = static_cast<float>(image->h) / 800.0f;  // WINDOW_HEIGHT
+        float scaleX = static_cast<float>(image.width) / 1200.0f;  // WINDOW_WIDTH
+        float scaleY = static_cast<float>(image.height) / 800.0f;  // WINDOW_HEIGHT
 
         int px = static_cast<int>(ball.pos.x * scaleX);
         int py = static_cast<int>(ball.pos.y * scaleY);
 
         uint8_t r, g, b;
-        if (samplePixel(image, px, py, r, g, b)) {
+        if (image.sample(px, py, r, g, b)) {
             ball.color.r = r;
             ball.color.g = g;
             ball.color.b = b;
@@ -170,8 +199,6 @@ int main(int argc, char* argv[]) {
         ball.pos = originals[i].pos;
         ball.radius = originals[i].radius;
     }
-
-    SDL_DestroySurface(image);
 
     if (outOfBounds > 0) {
         printf("Warning: %d balls had final positions outside the image bounds\n", outOfBounds);

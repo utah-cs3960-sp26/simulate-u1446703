@@ -36,15 +36,17 @@ cmake --build build
 ./build/tests
 ```
 
-Expected: **51/51 tests pass**. Includes:
+Expected: **58/58 tests pass**. Includes:
 - Vec2 math (6), gravity (2), ball-wall (5), ball-ball (4)
 - Restitution behavior (4), energy/settling (3), wall normals (2)
 - Collision edge cases (3), CCD (2), performance benchmark (1)
 - Large-scale 500-ball (2), full-scale 1000-ball (2)
-- CSV I/O (6), ball color (2)
+- CSV I/O (7), ball color (2)
 - Sleep system (3): gravity-from-rest wakeup, counter reset, zero-velocity settling
 - Contact-aware settling (3): shelf-sliding sleep, stuck detection, full-scale KE=0
-- Scene generator (2): grid CSV validation, funnel layout validation
+- Scene generator (3): grid CSV validation, funnel layout, all-layouts validation
+- Edge cases (4): corner collision, narrow channel, small radius, large radius difference
+- Pipeline (1): end-to-end headless CSV workflow
 
 ## Run Simulator
 
@@ -92,14 +94,21 @@ Options:
 
 ### Color assignment tool
 ```bash
-./build/color_assign <input.csv> <image.bmp> <output.csv> [restitution] [frames]
+./build/color_assign <input.csv> <image> <output.csv> [restitution] [frames]
 ```
 
-Runs the simulation on the input scene, then assigns each ball a color based on the pixel in the BMP image at the ball's final position. Writes the original scene with new colors to the output CSV.
+Runs the simulation on the input scene, then assigns each ball a color based on the pixel in the image at the ball's final position. Writes the original scene with new colors to the output CSV.
+
+Supported image formats: BMP, PNG, JPG, TGA, PSD, GIF, HDR, PIC, PNM (via stb_image).
 
 ### Controls (interactive mode)
-- **ESC** or **Q** to quit
-- FPS and ball count displayed in top-left corner
+- **SPACE** — Pause / Resume simulation
+- **RIGHT** or **N** — Single-step (when paused)
+- **UP** / **DOWN** — Speed up / slow down (0.25x–4x)
+- **1** — Reset speed to 1x
+- **R** — Restart simulation from initial state
+- **ESC** or **Q** — Quit
+- HUD displays: FPS, ball count, kinetic energy, speed multiplier, pause state, controls help
 
 ## Examples
 

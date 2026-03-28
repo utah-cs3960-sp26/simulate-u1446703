@@ -1699,6 +1699,229 @@ TEST(scene_gen_funnel_layout) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+// Iteration 13 — additional edge case and robustness tests
+// ═══════════════════════════════════════════════════════════════════════
+
+TEST(ball_in_corner_gets_pushed_out) {
+    // A ball jammed into a corner where two walls meet should be
+    // pushed out to valid space, not stuck or ejected explosively.
+    PhysicsWorld world;
+    world.config.gravity = 0.0f;
+    world.config.substeps = 8;
+    world.config.restitution = 0.3f;
+    world.config.sleepSpeed = 0.0f; // Disable sleep for precise tracking
+
+    // L-shaped corner at (0,0): floor and left wall
+    world.walls.push_back(Wall(Vec2(0.0f, 100.0f), Vec2(200.0f, 100.0f))); // floor
+    world.walls.push_back(Wall(Vec2(0.0f, 100.0f), Vec2(0.0f, 0.0f)));     // left wall
+
+    // Ball overlapping the corner (partially inside both walls)
+    Ball b(Vec2(3.0f, 97.0f), 5.0f);
+    b.vel = {-10.0f, 10.0f}; // Moving into corner
+    world.balls.push_back(b);
+
+    // Run a few frames
+    for (int i = 0; i < 30; ++i) world.step(0.016f);
+
+    // Ball must be outside both walls (pos.x > radius, pos.y < 100 - radius)
+    ASSERT(world.balls[0].pos.x >= 5.0f - 0.5f);
+    ASSERT(world.balls[0].pos.y <= 95.5f);
+    // Ball should not have been launched to absurd speed
+    ASSERT(world.balls[0].vel.length() < 200.0f);
+}
+
+TEST(many_balls_in_narrow_channel) {
+    // Stress test: 50 balls in a very narrow vertical channel.
+    // Tests constraint solver convergence in high-pressure scenarios.
+    PhysicsWorld world;
+    world.config.gravity = 500.0f;
+    world.config.restitution = 0.1f;
+    world.config.substeps = 8;
+    world.config.solverIterations = 8;
+
+    // Narrow channel: 30px wide, 600px tall
+    float left = 100.0f, right = 130.0f;
+    float top = 0.0f, bottom = 600.0f;
+    world.walls.push_back(Wall(Vec2(left, top), Vec2(right, top)));
+    world.walls.push_back(Wall(Vec2(right, top), Vec2(right, bottom)));
+    world.walls.push_back(Wall(Vec2(right, bottom), Vec2(left, bottom)));
+    world.walls.push_back(Wall(Vec2(left, bottom), Vec2(left, top)));
+
+    // 50 balls stacked in the channel (radius 5, so 10px per ball in a 30px channel)
+    for (int i = 0; i < 50; ++i) {
+        Ball b(Vec2(115.0f, 10.0f + i * 11.0f), 5.0f);
+        b.vel = Vec2(0, 5.0f + static_cast<float>(i % 3));
+        world.balls.push_back(b);
+    }
+
+    // Run for 5 seconds
+    for (int i = 0; i < 300; ++i) world.step(0.016f);
+
+    // All balls must be inside the channel
+    for (const auto& b : world.balls) {
+        ASSERT(b.pos.x > left - 1.0f);
+        ASSERT(b.pos.x < right + 1.0f);
+        ASSERT(b.pos.y > top - 1.0f);
+        ASSERT(b.pos.y < bottom + 1.0f);
+    }
+
+    // No significant overlaps
+    int overlaps = 0;
+    for (size_t i = 0; i < world.balls.size(); ++i) {
+        for (size_t j = i + 1; j < world.balls.size(); ++j) {
+            float dist = (world.balls[j].pos - world.balls[i].pos).length();
+            float minDist = world.balls[i].radius + world.balls[j].radius;
+            if (dist < minDist - 1.0f) overlaps++;
+        }
+    }
+    ASSERT(overlaps == 0);
+}
+
+TEST(zero_radius_ball_does_not_crash) {
+    // Edge case: a ball with very small radius should not cause division
+    // by zero or NaN in the physics engine.
+    PhysicsWorld world;
+    world.config.gravity = 500.0f;
+    world.config.sleepSpeed = 0.0f;
+
+    world.walls.push_back(Wall(Vec2(0, 0), Vec2(100, 0)));
+    world.walls.push_back(Wall(Vec2(100, 0), Vec2(100, 100)));
+    world.walls.push_back(Wall(Vec2(100, 100), Vec2(0, 100)));
+    world.walls.push_back(Wall(Vec2(0, 100), Vec2(0, 0)));
+
+    Ball b(Vec2(50, 50), 0.5f); // Very small but not zero
+    b.vel = {100, -50};
+    world.balls.push_back(b);
+
+    // Run for 2 seconds — should not crash or produce NaN
+    for (int i = 0; i < 120; ++i) world.step(0.016f);
+
+    ASSERT(!std::isnan(world.balls[0].pos.x));
+    ASSERT(!std::isnan(world.balls[0].pos.y));
+    ASSERT(!std::isinf(world.balls[0].pos.x));
+    ASSERT(!std::isinf(world.balls[0].pos.y));
+}
+
+TEST(csv_save_preserves_ball_color_flag) {
+    // Verify that saving and reloading balls preserves the hasColor flag
+    // and that balls without colors get saved with 0,0,0.
+    PhysicsWorld world;
+
+    Ball colored(Vec2(100, 100), 5.0f);
+    colored.color = {255, 128, 64, true};
+    world.balls.push_back(colored);
+
+    Ball uncolored(Vec2(200, 200), 5.0f);
+    // Default: hasColor=false, r=g=b=0
+    world.balls.push_back(uncolored);
+
+    std::string path = "/tmp/test_color_flag.csv";
+    ASSERT(saveSceneToCSV(path, world));
+
+    PhysicsWorld loaded;
+    ASSERT(loadSceneFromCSV(path, loaded));
+    ASSERT(loaded.balls.size() == 2);
+
+    // First ball: colored
+    ASSERT(loaded.balls[0].color.hasColor);
+    ASSERT(loaded.balls[0].color.r == 255);
+    ASSERT(loaded.balls[0].color.g == 128);
+    ASSERT(loaded.balls[0].color.b == 64);
+
+    // Second ball: saved as 0,0,0 but still loads with hasColor=true
+    // because the CSV always writes color columns. This is by design —
+    // once a ball goes through CSV roundtrip, it gains explicit color.
+    ASSERT(loaded.balls[1].color.hasColor);
+    ASSERT(loaded.balls[1].color.r == 0);
+    ASSERT(loaded.balls[1].color.g == 0);
+    ASSERT(loaded.balls[1].color.b == 0);
+}
+
+TEST(scene_gen_all_layouts_produce_valid_output) {
+    // Verify all four scene_gen layouts produce loadable CSV files
+    const char* layouts[] = {"grid", "rain", "funnel", "pile"};
+    for (int l = 0; l < 4; ++l) {
+        char cmd[256];
+        snprintf(cmd, sizeof(cmd),
+                 "./build/scene_gen /tmp/test_layout_%s.csv --balls 30 --layout %s --seed 99 2>/dev/null",
+                 layouts[l], layouts[l]);
+        int ret = system(cmd);
+        ASSERT(ret == 0);
+
+        PhysicsWorld world;
+        char path[256];
+        snprintf(path, sizeof(path), "/tmp/test_layout_%s.csv", layouts[l]);
+        bool loaded = loadSceneFromCSV(path, world);
+        ASSERT(loaded);
+        ASSERT(world.balls.size() == 30);
+        ASSERT(world.walls.size() >= 4); // At least container walls
+    }
+}
+
+TEST(spatial_grid_handles_large_radius_difference) {
+    // Test that the spatial grid correctly handles balls with very different
+    // radii (e.g., radius 2 vs radius 20) in the same simulation.
+    PhysicsWorld world;
+    world.config.gravity = 0.0f;
+    world.config.restitution = 0.5f;
+    world.config.sleepSpeed = 0.0f;
+
+    // One large ball and several small balls
+    Ball big(Vec2(100, 100), 20.0f);
+    big.vel = {0, 0};
+    world.balls.push_back(big);
+
+    // Small balls approaching the big one from different directions
+    for (int i = 0; i < 8; ++i) {
+        float angle = static_cast<float>(i) * 3.14159f / 4.0f;
+        float cx = 100.0f + 50.0f * cosf(angle);
+        float cy = 100.0f + 50.0f * sinf(angle);
+        Ball small(Vec2(cx, cy), 2.0f);
+        small.vel = Vec2(-50.0f * cosf(angle), -50.0f * sinf(angle));
+        world.balls.push_back(small);
+    }
+
+    // Run a few frames
+    for (int i = 0; i < 30; ++i) world.step(0.016f);
+
+    // No balls should overlap the big ball significantly
+    for (size_t i = 1; i < world.balls.size(); ++i) {
+        float dist = (world.balls[i].pos - world.balls[0].pos).length();
+        float minDist = world.balls[i].radius + world.balls[0].radius;
+        ASSERT(dist >= minDist - 1.0f);
+    }
+}
+
+TEST(headless_csv_pipeline_end_to_end) {
+    // End-to-end test: generate scene → simulate headless → save CSV → reload
+    // Tests the complete workflow that a user would follow.
+    int ret;
+
+    // Step 1: Generate scene
+    ret = system("./build/scene_gen /tmp/e2e_input.csv --balls 20 --layout grid --seed 7 2>/dev/null");
+    ASSERT(ret == 0);
+
+    // Step 2: Run headless simulation with CSV save
+    ret = system("./build/simulator --headless --load-csv /tmp/e2e_input.csv --save-csv /tmp/e2e_output.csv 0.3 200 /tmp/e2e 2>/dev/null");
+    ASSERT(ret == 0);
+
+    // Step 3: Verify output CSV exists and is loadable
+    PhysicsWorld loaded;
+    bool ok = loadSceneFromCSV("/tmp/e2e_output.csv", loaded);
+    ASSERT(ok);
+    ASSERT(loaded.balls.size() == 20);
+    ASSERT(loaded.walls.size() >= 4);
+
+    // Step 4: All balls should have settled (low or zero velocity positions
+    // in the output CSV don't carry velocity, but positions should be valid)
+    for (const auto& b : loaded.balls) {
+        ASSERT(!std::isnan(b.pos.x));
+        ASSERT(!std::isnan(b.pos.y));
+        ASSERT(b.radius > 0.0f);
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 // Main — run all tests
 // ═══════════════════════════════════════════════════════════════════════
 

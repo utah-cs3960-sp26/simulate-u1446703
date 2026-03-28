@@ -11,6 +11,7 @@ constexpr int WINDOW_HEIGHT = 800;
 
 // ── Renderer class ──────────────────────────────────────────────────
 // Wraps SDL3 window + renderer. Draws the physics world each frame.
+// Provides interactive controls: pause/resume, single-step, speed adjustment.
 class Renderer {
 public:
     Renderer();
@@ -23,6 +24,7 @@ public:
     void draw(const PhysicsWorld& world);
 
     // Poll events. Returns false if the user wants to quit.
+    // Updates internal state for pause, step, speed controls.
     bool pollEvents();
 
     // Present the backbuffer to the screen.
@@ -31,16 +33,42 @@ public:
     // Clear the screen with background color.
     void clear();
 
-    // Draw FPS and ball count overlay in top-left corner.
-    void drawHUD(float fps, int ballCount);
+    // Draw FPS, ball count, and controls overlay in top-left corner.
+    void drawHUD(float fps, int ballCount, float ke);
 
     // Save the current framebuffer to a BMP file.
     // Returns true on success.
     bool saveScreenshot(const char* filename);
 
+    // ── Interactive state ─────────────────────────────────────────
+    // These are set by pollEvents() and read by main loop.
+
+    bool isPaused() const { return paused_; }
+
+    // Returns true if a single-step was requested (consumes the request).
+    bool consumeStep() {
+        if (stepRequested_) { stepRequested_ = false; return true; }
+        return false;
+    }
+
+    // Speed multiplier for physics dt (0.25x, 0.5x, 1x, 2x, 4x).
+    float speedMultiplier() const { return speedMultiplier_; }
+
+    // Whether a restart was requested (consumes the request).
+    bool consumeRestart() {
+        if (restartRequested_) { restartRequested_ = false; return true; }
+        return false;
+    }
+
 private:
     SDL_Window*   window_   = nullptr;
     SDL_Renderer* renderer_ = nullptr;
+
+    // Interactive state
+    bool paused_          = false;
+    bool stepRequested_   = false;
+    bool restartRequested_ = false;
+    float speedMultiplier_ = 1.0f;
 
     // Draw a filled circle using SDL3 (approximated with triangles).
     void drawFilledCircle(float cx, float cy, float r,

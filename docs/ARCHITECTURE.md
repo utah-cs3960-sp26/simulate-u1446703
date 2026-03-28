@@ -4,19 +4,24 @@
 
 ```
 simulate-u1446703/
-├── CMakeLists.txt          # Build configuration (4 targets: physics_lib, csv_io_lib, simulator, color_assign, tests)
+├── CMakeLists.txt          # Build configuration (5 targets: physics_lib, csv_io_lib, simulator, color_assign, scene_gen, tests)
+├── .github/
+│   └── workflows/
+│       └── ci.yml          # GitHub Actions CI (build, test, headless sim, pipeline)
 ├── include/
 │   ├── physics.h           # Core physics types: Vec2, Ball, BallColor, Wall, PhysicsWorld, SpatialGrid
-│   ├── renderer.h          # SDL3 renderer wrapper
-│   └── csv_io.h            # CSV scene file I/O (load/save balls + walls)
+│   ├── renderer.h          # SDL3 renderer wrapper with interactive controls
+│   ├── csv_io.h            # CSV scene file I/O (load/save balls + walls)
+│   └── stb_image.h         # Single-header image library (PNG/JPG/BMP/TGA support)
 ├── src/
 │   ├── physics.cpp         # Physics engine implementation (CCD, spatial grid, solvers)
-│   ├── renderer.cpp        # SDL3 rendering (circles, lines, HUD, screenshots)
+│   ├── renderer.cpp        # SDL3 rendering (circles, lines, HUD, screenshots, controls)
 │   ├── csv_io.cpp          # CSV scene loading/saving implementation
-│   ├── color_assign.cpp    # Color assignment tool (maps final positions to image colors)
+│   ├── color_assign.cpp    # Color assignment tool (maps final positions to image colors, multi-format)
+│   ├── scene_gen.cpp       # Procedural scene generator (grid/rain/funnel/pile layouts)
 │   └── main.cpp            # Entry point, scene setup, main loop, headless mode, CSV CLI
 ├── tests/
-│   └── test_physics.cpp    # 46 unit tests (physics + CSV I/O + sleep system)
+│   └── test_physics.cpp    # 58 unit tests (physics + CSV I/O + sleep system + edge cases + pipeline)
 ├── screenshots/            # BMP screenshots from headless runs (gitignored)
 ├── docs/
 │   ├── ARCHITECTURE.md     # This file
@@ -52,9 +57,16 @@ simulate-u1446703/
 - Precomputed trig tables and static vertex buffer eliminate per-ball heap allocation.
 - **Ball outlines**: Each ball is drawn with a dark outline (0.8px border) for visual separation in dense packs.
 - Balls colored by speed: blue (slow) → green (medium) → red (fast).
-- Walls drawn as white lines.
-- FPS + ball count HUD overlay via `SDL_RenderDebugText` (scaled 2×).
+- Walls drawn as thick gray quads (4px).
+- **HUD overlay**: FPS, ball count, kinetic energy, speed multiplier, pause state, and controls help text via `SDL_RenderDebugText` (scaled 2×/1.5×).
 - `saveScreenshot()` captures the framebuffer to BMP via `SDL_RenderReadPixels` + `SDL_SaveBMP`.
+- **Interactive controls** (iteration 13):
+  - SPACE: pause/resume simulation
+  - RIGHT/N: single-step when paused
+  - UP/DOWN: speed multiplier (0.25x–4x)
+  - 1: reset speed to 1x
+  - R: restart simulation from initial state
+  - ESC/Q: quit
 
 ### CSV I/O (csv_io.h / csv_io.cpp)
 
@@ -68,12 +80,12 @@ simulate-u1446703/
 
 ### Color Assignment Tool (color_assign.cpp)
 
-- Standalone executable: `./color_assign <input.csv> <image.bmp> <output.csv> [restitution] [frames]`
+- Standalone executable: `./color_assign <input.csv> <image> <output.csv> [restitution] [frames]`
+- **Multi-format image support** (iteration 13): Uses `stb_image.h` to load BMP, PNG, JPG, TGA, PSD, GIF, HDR, PIC, PNM. No SDL dependency required for this tool.
 - Phase 1: Load initial scene from CSV, save original ball positions.
 - Phase 2: Run physics simulation for specified frames until balls settle.
-- Phase 3: Load BMP image, sample pixel color at each ball's final world position (scaled proportionally if image size differs from window).
+- Phase 3: Load image, sample pixel color at each ball's final world position (scaled proportionally if image size differs from window).
 - Phase 4: Write output CSV with original starting positions but colors sampled from the image at final positions.
-- Uses `SDL_LoadBMP` + `SDL_ReadSurfacePixel` for format-independent pixel sampling.
 
 ### Scene Setup (main.cpp)
 

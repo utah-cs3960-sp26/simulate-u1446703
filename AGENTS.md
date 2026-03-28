@@ -30,5 +30,9 @@ docs/
 ├── ARCHITECTURE.md   # Project structure, design decisions, class overview, collision algorithms
 └── BUILD.md          # Prerequisites, install steps, build commands, run instructions, CSV/color-assign usage
 
+.github/
+└── workflows/
+    └── ci.yml        # GitHub Actions CI (build, test, headless, pipeline)
+
 screenshots/          # BMP screenshots from headless runs (gitignored)
 ```

@@ -152,9 +152,10 @@ static int runHeadless(float restitution, int totalFrames, const char* prefix,
         world.step(dt);
 
         // Render every frame so the final screenshot reflects the true state.
+        float ke = world.totalKineticEnergy();
         renderer.clear();
         renderer.draw(world);
-        renderer.drawHUD(60.0f, static_cast<int>(world.balls.size()));
+        renderer.drawHUD(60.0f, static_cast<int>(world.balls.size()), ke);
         renderer.present();
 
         // Save screenshot at scheduled moments.
@@ -232,7 +233,13 @@ int main(int argc, char* argv[]) {
     }
 
     printf("Physics Simulator — restitution = %.2f\n", restitution);
-    printf("Controls: ESC or Q to quit\n");
+    printf("Controls:\n");
+    printf("  SPACE       — Pause / Resume\n");
+    printf("  RIGHT / N   — Single step (when paused)\n");
+    printf("  UP / DOWN   — Speed up / slow down (0.25x–4x)\n");
+    printf("  1           — Reset speed to 1x\n");
+    printf("  R           — Restart simulation\n");
+    printf("  ESC / Q     — Quit\n");
 
     // Set up physics world
     PhysicsWorld world;
@@ -262,6 +269,19 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
+    // ── Helper lambda to reset the simulation ───────────────────────
+    // Clears and rebuilds the scene so R-key restart works.
+    auto resetSimulation = [&]() {
+        world.balls.clear();
+        world.walls.clear();
+        if (loadCSV) {
+            loadSceneFromCSV(loadCSV, world);
+        } else {
+            setupWalls(world);
+            setupBalls(world);
+        }
+    };
+
     // ── Main loop ───────────────────────────────────────────────────
     Uint64 lastTime = SDL_GetPerformanceCounter();
     Uint64 freq = SDL_GetPerformanceFrequency();
@@ -282,16 +302,25 @@ int main(int argc, char* argv[]) {
             fpsSmoothed = fpsSmoothed * 0.95f + instantFps * 0.05f;
         }
 
-        // Handle input
+        // Handle input (updates pause, speed, step state)
         running = renderer.pollEvents();
 
-        // Step physics
-        world.step(dt);
+        // Handle restart request
+        if (renderer.consumeRestart()) {
+            resetSimulation();
+        }
+
+        // Step physics: respect pause and speed controls
+        if (!renderer.isPaused() || renderer.consumeStep()) {
+            float adjustedDt = dt * renderer.speedMultiplier();
+            world.step(adjustedDt);
+        }
 
         // Render
+        float ke = world.totalKineticEnergy();
         renderer.clear();
         renderer.draw(world);
-        renderer.drawHUD(fpsSmoothed, static_cast<int>(world.balls.size()));
+        renderer.drawHUD(fpsSmoothed, static_cast<int>(world.balls.size()), ke);
         renderer.present();
     }
 

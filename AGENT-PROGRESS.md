@@ -1,5 +1,78 @@
 # Agent Progress Log
 
+## Iteration 13 — 2026-03-28 (Claude Opus 4.6)
+
+### What was done
+Infrastructure improvements, multi-format image support, interactive controls, and expanded test coverage.
+
+1. **Fixed broken git repository**:
+   - Iteration 12 used `/tmp/fresh_git_objects` as an alternate object store but the `.git/objects/info/alternates` file was pointing to `.git/objects` (itself) instead of the `/tmp` directory
+   - Fixed by correcting the alternates path; verified `git log` and `git status` work
+   - Push still blocked by lack of GitHub credentials (no SSH keys, gh CLI, or .netrc)
+
+2. **GitHub Actions CI workflow** (`.github/workflows/ci.yml`):
+   - Triggered on push/PR to main
+   - Builds SDL3 from source with offscreen support
+   - Runs all unit tests
+   - Runs headless simulation and verifies KE reaches 0
+   - Tests the full scene_gen → simulator → CSV pipeline
+   - Uploads screenshots as build artifacts
+
+3. **Multi-format image support** (`src/color_assign.cpp`, `include/stb_image.h`):
+   - Replaced SDL_LoadBMP with stb_image for image loading
+   - Now supports PNG, JPG, BMP, TGA, PSD, GIF, HDR, PIC, PNM
+   - Removed SDL3 dependency from color_assign entirely (pure C++ + stb_image)
+   - Image struct wraps stb_image with RAII, forces RGB output
+
+4. **Interactive keyboard controls** (`include/renderer.h`, `src/renderer.cpp`, `src/main.cpp`):
+   - SPACE: pause/resume simulation
+   - RIGHT/N: single-step when paused (frame advance for debugging)
+   - UP/DOWN/EQUALS/MINUS: speed multiplier 0.25x–4x
+   - 1: reset speed to 1x
+   - R: restart simulation from initial state (works with both generated and CSV-loaded scenes)
+   - ESC/Q: quit
+   - HUD updated to show KE, speed multiplier, pause state, and controls help text
+   - `drawHUD()` now takes KE parameter for real-time energy display
+
+5. **New tests** (`tests/test_physics.cpp`): 7 new tests (51→58 total):
+   - `ball_in_corner_gets_pushed_out`: Ball jammed in an L-corner resolves without explosion
+   - `many_balls_in_narrow_channel`: 50 balls in a 30px channel — tests solver convergence under high pressure
+   - `zero_radius_ball_does_not_crash`: Very small ball doesn't produce NaN/Inf
+   - `csv_save_preserves_ball_color_flag`: Color roundtrip through CSV save/load
+   - `scene_gen_all_layouts_produce_valid_output`: All 4 layouts (grid/rain/funnel/pile) produce valid CSV
+   - `spatial_grid_handles_large_radius_difference`: Mixed 2px/20px radius collision handling
+   - `headless_csv_pipeline_end_to_end`: Full scene_gen → headless simulation → CSV save → reload pipeline
+
+6. **Documentation updates**:
+   - Updated ARCHITECTURE.md: new file tree, interactive controls, multi-format image support
+   - Updated BUILD.md: 58 tests, updated controls section, updated color_assign docs
+   - Updated TASKS.md: iteration 13 checklist, resolved 3 future-work items
+   - Updated AGENTS.md: added CI workflow to docs tree
+
+### Verification performed
+- `cmake -S . -B build` → configured
+- `cmake --build build` → compiled cleanly (all 5 targets)
+- `./build/tests` → **58/58 passed** (including 7 new tests)
+- `./build/simulator --headless 0.3 300 screenshots/iter13_controls` → KE=0 by frame ~240
+- `./build/color_assign` tested with stb_image — successfully loads BMP screenshots
+- End-to-end pipeline: scene_gen → headless → CSV save → reload verified in test
+
+### Current state
+- **58/58 tests pass** including 7 new edge case and pipeline tests
+- **Multi-format image support**: color_assign works with PNG, JPG, BMP, TGA, etc.
+- **Interactive controls**: pause, step, speed, restart for debugging and exploration
+- **CI workflow ready**: GitHub Actions will run on push once push credentials are available
+- **All PROJECT-OVERVIEW.md requirements met** with improved tooling and test coverage
+- Performance: ~2.0 ms/frame for 1000 balls (~16× headroom for 30 FPS)
+- Git: 4 commits ahead of origin/main (iterations 11, 12, and 13 unpushed)
+
+### What the next iteration should focus on
+- **Push to GitHub**: Configure credentials (SSH key, gh CLI, or .netrc) and push all pending commits
+- **Visual polish**: Restitution slider UI, color scheme options
+- **Interactive display**: Need X11/Wayland environment for true visual verification
+- **SIMD vectorization**: Consider SIMD for physics step inner loops if more performance is needed
+- **Consolidate git objects**: The `/tmp/fresh_git_objects` alternate is fragile (lost on reboot). Consider `git repack` to move all objects into `.git/objects/pack/`
+
 ## Iteration 1 — 2026-03-18 (Claude Opus 4.6)
 
 ### What was done

@@ -46,8 +46,46 @@ bool Renderer::pollEvents() {
     while (SDL_PollEvent(&event)) {
         if (event.type == SDL_EVENT_QUIT) return false;
         if (event.type == SDL_EVENT_KEY_DOWN) {
-            if (event.key.key == SDLK_ESCAPE || event.key.key == SDLK_Q) {
-                return false;
+            switch (event.key.key) {
+                case SDLK_ESCAPE:
+                case SDLK_Q:
+                    return false;
+
+                // SPACE: toggle pause/resume
+                case SDLK_SPACE:
+                    paused_ = !paused_;
+                    break;
+
+                // RIGHT ARROW or N: single-step (only when paused)
+                case SDLK_RIGHT:
+                case SDLK_N:
+                    if (paused_) stepRequested_ = true;
+                    break;
+
+                // R: restart simulation
+                case SDLK_R:
+                    restartRequested_ = true;
+                    break;
+
+                // UP ARROW or EQUALS/PLUS: increase speed (max 4x)
+                case SDLK_UP:
+                case SDLK_EQUALS:
+                    if (speedMultiplier_ < 4.0f) speedMultiplier_ *= 2.0f;
+                    break;
+
+                // DOWN ARROW or MINUS: decrease speed (min 0.25x)
+                case SDLK_DOWN:
+                case SDLK_MINUS:
+                    if (speedMultiplier_ > 0.25f) speedMultiplier_ *= 0.5f;
+                    break;
+
+                // 1: reset speed to 1x
+                case SDLK_1:
+                    speedMultiplier_ = 1.0f;
+                    break;
+
+                default:
+                    break;
             }
         }
     }
@@ -121,17 +159,37 @@ void Renderer::draw(const PhysicsWorld& world) {
     }
 }
 
-// ── drawHUD — FPS and ball count overlay ────────────────────────────
-void Renderer::drawHUD(float fps, int ballCount) {
+// ── drawHUD — FPS, ball count, KE, and controls overlay ──────────────
+void Renderer::drawHUD(float fps, int ballCount, float ke) {
     // SDL3 provides SDL_RenderDebugText for simple text without loading fonts.
     // It renders 8×8 monospaced characters at the given position.
-    char buf[64];
-    snprintf(buf, sizeof(buf), "FPS: %.0f  Balls: %d", fps, ballCount);
-
-    // Scale up the debug text for readability (2×).
     SDL_SetRenderScale(renderer_, 2.0f, 2.0f);
+
+    // Line 1: FPS, ball count, kinetic energy
+    char buf[128];
+    snprintf(buf, sizeof(buf), "FPS: %.0f  Balls: %d  KE: %.0f", fps, ballCount, ke);
     SDL_SetRenderDrawColor(renderer_, 240, 240, 100, 255); // yellow
     SDL_RenderDebugText(renderer_, 4.0f, 4.0f, buf);
+
+    // Line 2: Speed and pause state
+    if (paused_) {
+        snprintf(buf, sizeof(buf), "PAUSED  Speed: %.2fx", speedMultiplier_);
+        SDL_SetRenderDrawColor(renderer_, 255, 100, 100, 255); // red
+    } else {
+        snprintf(buf, sizeof(buf), "Speed: %.2fx", speedMultiplier_);
+        SDL_SetRenderDrawColor(renderer_, 150, 220, 150, 255); // green
+    }
+    SDL_RenderDebugText(renderer_, 4.0f, 16.0f, buf);
+
+    // Line 3: Controls help (bottom of screen, small)
+    SDL_SetRenderScale(renderer_, 1.5f, 1.5f);
+    SDL_SetRenderDrawColor(renderer_, 160, 160, 180, 255); // dim gray
+    snprintf(buf, sizeof(buf),
+             "SPACE:pause  RIGHT/N:step  UP/DOWN:speed  R:restart  1:reset  Q:quit");
+    // Position at the bottom of the window (accounting for scale)
+    float helpY = (WINDOW_HEIGHT / 1.5f) - 12.0f;
+    SDL_RenderDebugText(renderer_, 4.0f, helpY, buf);
+
     SDL_SetRenderScale(renderer_, 1.0f, 1.0f);
 }
 

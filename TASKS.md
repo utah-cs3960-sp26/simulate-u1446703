@@ -1,5 +1,32 @@
 # Tasks
 
+## Completed — Iteration 13 (2026-03-28)
+
+- [x] Fix broken git repository (alternates pointing to wrong path after iteration 12 workaround)
+- [x] Add GitHub Actions CI workflow (`.github/workflows/ci.yml`):
+  - Builds SDL3 from source, configures project, runs all tests
+  - Runs headless simulation and verifies KE reaches 0
+  - Tests scene_gen pipeline end-to-end
+  - Uploads screenshots as artifacts
+- [x] Add multi-format image support to `color_assign` via `stb_image.h`:
+  - Supports PNG, JPG, BMP, TGA, PSD, GIF, HDR, PIC, PNM
+  - Removed SDL3 dependency from color_assign (pure C++ + stb_image)
+- [x] Add interactive keyboard controls to simulator:
+  - SPACE: pause/resume, RIGHT/N: single-step, UP/DOWN: speed (0.25x–4x)
+  - 1: reset speed, R: restart simulation, ESC/Q: quit
+  - HUD shows KE, speed multiplier, pause state, controls help
+- [x] Add 7 new tests (51→58):
+  - `ball_in_corner_gets_pushed_out`: ball jammed in L-corner resolves cleanly
+  - `many_balls_in_narrow_channel`: 50 balls in 30px-wide channel, no overlaps
+  - `zero_radius_ball_does_not_crash`: very small ball doesn't produce NaN/Inf
+  - `csv_save_preserves_ball_color_flag`: color roundtrip through CSV
+  - `scene_gen_all_layouts_produce_valid_output`: all 4 layouts produce loadable CSV
+  - `spatial_grid_handles_large_radius_difference`: mixed 2px/20px radius collision
+  - `headless_csv_pipeline_end_to_end`: full scene_gen → headless → CSV → reload
+- [x] Verify all 58/58 tests pass
+- [x] Run headless simulation — KE=0 by frame ~240 at r=0.3
+- [x] Update documentation (ARCHITECTURE.md, BUILD.md, TASKS.md, AGENT-PROGRESS.md)
+
 ## Completed — Iteration 12 (2026-03-28)
 
 - [x] Diagnose residual KE plateauing at non-zero values (860K at r=0.0, 995K at r=0.3)
@@ -153,8 +180,10 @@
 - [x] ~~**High-restitution residual bouncing**~~ — Contact-aware settling: contact sleep + stuck detection ensures KE=0 at all restitution values (iteration 12)
 - [x] ~~**Visual polish: Ball outlines**~~ — Dark 0.8px outline around each ball for visual separation (iteration 12)
 - [x] ~~**CSV scene generator**~~ — `scene_gen` tool with grid/rain/funnel/pile layouts (iteration 10/12; tests added in 12)
+- [x] ~~**PNG image support**~~ — `color_assign` now uses stb_image: supports PNG, JPG, BMP, TGA, and more (iteration 13)
+- [x] ~~**CI workflow**~~ — GitHub Actions CI: build, test, headless sim, pipeline validation (iteration 13)
+- [x] ~~**Interactive controls**~~ — Pause/resume, single-step, speed adjustment (0.25x–4x), restart (iteration 13)
 - [ ] **Visual polish**: Restitution slider UI, color scheme options
 - [ ] **SIMD vectorization**: Consider SIMD for the physics step inner loops
 - [ ] **Interactive display**: Need an environment with a real display server (X11/Wayland) for interactive mode
-- [ ] **PNG image support**: `color_assign` currently requires BMP; could add PNG via SDL_image
-- [ ] **CI workflow**: Automated testing pipeline
+- [ ] **Git push**: Need GitHub credentials configured to push (SSH keys, gh CLI, or .netrc)

@@ -30,13 +30,16 @@ target_include_directories(simulator PRIVATE include)
 target_link_libraries(simulator PRIVATE physics_lib csv_io_lib SDL3::SDL3)
 
 # ── Color assignment tool ────────────────────────────────────────────
-# Takes an initial scene CSV + a BMP image, runs the simulation, and
-# assigns each ball a color based on where it ends up in the image.
+# Takes an initial scene CSV + an image (BMP/PNG/JPG/TGA), runs the
+# simulation, and assigns each ball a color based on where it ends up
+# in the image. Uses stb_image for multi-format loading (no SDL needed).
 add_executable(color_assign
     src/color_assign.cpp
 )
 target_include_directories(color_assign PRIVATE include)
-target_link_libraries(color_assign PRIVATE physics_lib csv_io_lib SDL3::SDL3)
+target_link_libraries(color_assign PRIVATE physics_lib csv_io_lib)
+# stb_image needs math library on some platforms
+target_link_libraries(color_assign PRIVATE m)
 
 # ── Scene generator tool ────────────────────────────────────────────
 # Generates procedural scene CSV files with various ball/wall layouts.
