@@ -20,7 +20,8 @@ There must be accurate and adequate tests for this simulator. You must at all co
 You are one instance of a repeating prompt. You're job is to create, test, and refine this project to best meet the specifications outlined in ./PROJECT-OVERVIEW.md. You are to always optimize for future iterations to cohesively take over from where you leave off. This includes but is not limited too:
 - Commenting your code in a way that is readable to humans and agents, and allows either to easily take over work
 - Do not end a thread until the code is in a place where the next iteration can pick up where you left off
-- Always test your changes, through both unit tests and running the program yourself to test it.
+- Always test your changes, through both unit tests and running the program yourself to test it. Create unit tests before implementing a new feature, and build off of that.
+- Every feature mentioned in PROJECT-OVERVIEW.md must be thoroughly tested
 - Document everything you can, and always refer to relevant documentation when working
 - Utilize TASKS.md to keep track of what you're currently working on, and what needs to be done. Every plan or work that needs to exist outside of one iteration must be kept track of there.
 - Plan out implementations in advance, and use TASKS.md to faciliate this. You are welcome to create more markdown files if necessary.
@@ -29,7 +30,6 @@ You are one instance of a repeating prompt. You're job is to create, test, and r
 **There will be no human intervention with this project**. You must account for this fact. The AI model will not necessarily be the same between iterations, and may change as the user deems fit.
 
 # Self-improvement
-
 You are allowed and encouraged to create more markdown files to facilitate the project design process.
 
 # Work Documentation

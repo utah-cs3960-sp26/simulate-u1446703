@@ -1,0 +1,36 @@
+# Example scene: two colored ball groups start on opposite sides of the box.
+# Sloped guide walls feed both groups into a narrow center chute.
+# Coordinates match the simulator's default 1200x800 window and 50px wall margin.
+type,param1,param2,param3,param4,param5,param6
+wall,50,50,1150,50
+wall,1150,50,1150,750
+wall,1150,750,50,750
+wall,50,750,50,50
+wall,170,310,560,500
+wall,1030,310,640,500
+wall,560,620,560,500
+wall,640,500,640,620
+ball,170,120,12,255,140,80
+ball,202,120,12,255,140,80
+ball,234,120,12,255,140,80
+ball,266,120,12,255,140,80
+ball,170,152,12,255,140,80
+ball,202,152,12,255,140,80
+ball,234,152,12,255,140,80
+ball,266,152,12,255,140,80
+ball,170,184,12,255,140,80
+ball,202,184,12,255,140,80
+ball,234,184,12,255,140,80
+ball,266,184,12,255,140,80
+ball,934,120,12,80,160,255
+ball,966,120,12,80,160,255
+ball,998,120,12,80,160,255
+ball,1030,120,12,80,160,255
+ball,934,152,12,80,160,255
+ball,966,152,12,80,160,255
+ball,998,152,12,80,160,255
+ball,1030,152,12,80,160,255
+ball,934,184,12,80,160,255
+ball,966,184,12,80,160,255
+ball,998,184,12,80,160,255
+ball,1030,184,12,80,160,255

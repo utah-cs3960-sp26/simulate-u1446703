@@ -727,3 +727,28 @@ Fixed the fundamental residual-KE problem where balls never fully settled, and a
 - **PNG image support**: `color_assign` currently requires BMP; could add PNG via SDL_image
 - **CI workflow**: Automated testing pipeline
 - **SIMD vectorization**: Consider SIMD for physics step inner loops if more performance is needed
+
+## Iteration 14 — 2026-03-29 (Codex)
+
+### What was done
+Added a checked-in sample CSV scene for the simulator's CSV-loading workflow.
+
+1. **Bundled example scene** (`examples/two_groups_center_funnel.csv`):
+   - Added a hand-authored CSV scene that matches the default 1200x800 world bounds with 50px margins.
+   - Includes the standard rectangular container plus two sloped guide walls and a short center chute to funnel traffic into the middle of the screen.
+   - Places two mirrored ball groups on the left and right sides of the container.
+   - Uses explicit ball colors so the two groups remain visually distinct when loaded in the renderer.
+
+2. **Documentation updates** (`docs/ARCHITECTURE.md`, `docs/BUILD.md`, `TASKS.md`):
+   - Added the new `examples/` folder to the architecture tree.
+   - Documented the example scene in the CSV I/O section and build/run instructions.
+   - Added a concrete command showing how to run the bundled example in headless mode.
+
+### Verification performed
+- `c++ -std=c++17 -Iinclude -x c++ - src/csv_io.cpp src/physics.cpp -o /tmp/check_csv` (compiled a one-off CSV loader probe against project sources)
+- `/tmp/check_csv examples/two_groups_center_funnel.csv` → `CSV loaded: 24 balls, 8 walls`
+- `./build/simulator --headless --load-csv examples/two_groups_center_funnel.csv ...` was attempted, but the current local SDL/offscreen renderer setup failed before scene execution (`SDL_CreateWindow failed: Could not initialize OpenGL / GLES library`)
+
+### Current state
+- The repo now includes a ready-to-run CSV example scene for the user request.
+- Documentation points directly to the checked-in example and shows how to execute it.

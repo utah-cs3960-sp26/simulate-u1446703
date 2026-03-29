@@ -20,7 +20,10 @@
   - `csv_roundtrip_preserves_walls_exactly`: wall coordinates survive CSV roundtrip
 - [x] Verify all 64/64 tests pass
 - [x] Run headless simulation — KE=0 by frame ~270 at r=0.3
-- [x] Update documentation (ARCHITECTURE.md, BUILD.md, TASKS.md, AGENT-PROGRESS.md)
+- [x] Plan and add a checked-in example CSV scene for manual loading/testing
+- [x] Create `examples/two_groups_center_funnel.csv` with two mirrored ball groups and a wall funnel/chute into the center
+- [x] Update documentation (ARCHITECTURE.md, BUILD.md, AGENT-PROGRESS.md, TASKS.md) to describe the bundled example scene
+- [x] Verify the example scene loads through the project CSV loader
 
 ## Completed — Iteration 13 (2026-03-28)
 

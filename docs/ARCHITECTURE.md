@@ -8,6 +8,8 @@ simulate-u1446703/
 ├── .github/
 │   └── workflows/
 │       └── ci.yml          # GitHub Actions CI (build, test, headless sim, pipeline)
+├── examples/
+│   └── two_groups_center_funnel.csv # Example CSV scene with mirrored groups feeding a center funnel
 ├── include/
 │   ├── physics.h           # Core physics types: Vec2, Ball, BallColor, Wall, PhysicsWorld, SpatialGrid
 │   ├── sim_config.h        # Shared constants (WINDOW_WIDTH/HEIGHT, DefaultPhysicsConfig) — no SDL dependency
@@ -85,6 +87,7 @@ simulate-u1446703/
 - `loadSceneFromCSV()` clears existing world data before loading.
 - `saveSceneToCSV()` writes current ball positions and colors.
 - Roundtrip tested: save → reload preserves all data within float precision.
+- **Bundled example scene**: `examples/two_groups_center_funnel.csv` starts two colored ball packs on the left/right sides of the default container and uses sloped guide walls plus a short center chute to funnel them together.
 
 ### Color Assignment Tool (color_assign.cpp)
 

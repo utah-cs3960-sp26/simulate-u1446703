@@ -81,6 +81,16 @@ Expected: **64/64 tests pass**. Includes:
 ./build/simulator --headless --load-csv input.csv --save-csv output.csv 0.3 600
 ```
 
+Bundled example:
+```bash
+./build/simulator --headless \
+  --load-csv examples/two_groups_center_funnel.csv \
+  --save-csv /tmp/two_groups_center_funnel_settled.csv \
+  0.3 600 screenshots/two_groups_center_funnel
+```
+
+This example starts two colored ball groups on opposite sides of the default container and uses sloped walls to funnel both groups into a narrow center chute.
+
 ### Scene generator tool
 ```bash
 ./build/scene_gen <output.csv> [options]
@@ -133,6 +143,9 @@ mkdir -p screenshots
 ./build/simulator --headless --load-csv scene.csv --save-csv settled.csv 0.3 600 screenshots/sim
 ./build/color_assign scene.csv screenshots/sim_settled.bmp colored.csv 0.3 600
 ./build/simulator --headless --load-csv colored.csv 0.3 10 screenshots/colored
+
+# Bundled two-group funnel example
+./build/simulator --headless --load-csv examples/two_groups_center_funnel.csv 0.3 600 screenshots/two_groups_center_funnel
 ```
 
 ## Performance
