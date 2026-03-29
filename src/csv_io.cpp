@@ -147,13 +147,19 @@ bool saveSceneToCSV(const std::string& filename, const PhysicsWorld& world) {
              << wall.p2.x << "," << wall.p2.y << "\n";
     }
 
-    // Write balls with their current positions and colors
+    // Write balls with their current positions and colors.
+    // Balls with hasColor=true get full 7-column rows (ball,x,y,radius,r,g,b).
+    // Balls with hasColor=false get 4-column rows (ball,x,y,radius) so they
+    // preserve speed-based coloring after a CSV roundtrip.
     for (const auto& ball : world.balls) {
         file << "ball," << ball.pos.x << "," << ball.pos.y << ","
-             << ball.radius << ","
-             << static_cast<int>(ball.color.r) << ","
-             << static_cast<int>(ball.color.g) << ","
-             << static_cast<int>(ball.color.b) << "\n";
+             << ball.radius;
+        if (ball.color.hasColor) {
+            file << "," << static_cast<int>(ball.color.r)
+                 << "," << static_cast<int>(ball.color.g)
+                 << "," << static_cast<int>(ball.color.b);
+        }
+        file << "\n";
     }
 
     printf("CSV saved: %zu balls, %zu walls to '%s'\n",

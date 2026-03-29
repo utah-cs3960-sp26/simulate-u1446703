@@ -36,7 +36,7 @@ cmake --build build
 ./build/tests
 ```
 
-Expected: **64/64 tests pass**. Includes:
+Expected: **70/70 tests pass**. Includes:
 - Vec2 math (6), gravity (2), ball-wall (5), ball-ball (4)
 - Restitution behavior (4), energy/settling (3), wall normals (2)
 - Collision edge cases (3), CCD (2), performance benchmark (1)
@@ -52,6 +52,9 @@ Expected: **64/64 tests pass**. Includes:
 - Degenerate cases (2): coincident balls, high-speed ball-to-ball
 - Color assign pipeline (1): end-to-end color_assign tool test
 - CSV roundtrip (1): wall coordinate preservation
+- CSV color preservation (3): uncolored roundtrip, 4-column load, mixed colored/uncolored
+- Config helper (2): applyDefaultConfig sets all fields, allows override
+- Multi-restitution settling (1): KE=0 at r=0.0/0.3/0.9 for 100 balls
 
 ## Run Simulator
 

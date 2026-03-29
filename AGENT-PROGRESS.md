@@ -1,5 +1,56 @@
 # Agent Progress Log
 
+## Iteration 15 — 2026-03-29 (Claude Opus 4.6)
+
+### What was done
+CSV color preservation fix, config initialization cleanup, scene_gen shared constants, and expanded test coverage (64→70 tests).
+
+1. **Fixed CSV hasColor roundtrip bug** (`src/csv_io.cpp`):
+   - **Bug**: Uncolored balls (`hasColor=false`) were saved with `0,0,0` color columns. On reload, they gained `hasColor=true` with black color, losing the renderer's speed-based coloring.
+   - **Fix**: `saveSceneToCSV()` now writes 4-column rows (`ball,x,y,radius`) for uncolored balls and 7-column rows (`ball,x,y,radius,r,g,b`) for colored balls. The loader already handled both formats.
+   - Verified: uncolored balls survive CSV roundtrip without gaining color.
+
+2. **Added `applyDefaultConfig()` helper** (`include/physics.h`):
+   - Inline function that applies all `DefaultPhysicsConfig` values to a `PhysicsConfig` struct.
+   - Replaced 8-line manual field assignments in `main.cpp` (2 locations) and `color_assign.cpp` (1 location) with a single function call + restitution override.
+   - `physics.h` now includes `sim_config.h` directly, making shared constants available everywhere `physics.h` is included.
+
+3. **Updated `scene_gen.cpp` to use `sim_config.h`** (`src/scene_gen.cpp`):
+   - Default container dimensions (`width`, `height`) now derived from `WINDOW_WIDTH` and `WINDOW_HEIGHT` instead of hardcoded 1100/700.
+   - Eliminates potential dimension drift if window constants change.
+
+4. **6 new tests** (64→70, all passing):
+   - `csv_roundtrip_preserves_uncolored_balls`: mixed colored/uncolored balls survive CSV save→load
+   - `apply_default_config_sets_all_fields`: verifies all DefaultPhysicsConfig fields applied correctly
+   - `apply_default_config_allows_override`: individual field overrides work after applyDefaultConfig
+   - `csv_load_4_column_ball_rows`: 4-column ball rows load without color (hasColor=false)
+   - `csv_mixed_colored_and_uncolored_roundtrip`: mixed 4-col and 7-col ball rows in one file
+   - `settling_at_three_restitution_values_all_reach_zero_ke`: 100 balls reach KE=0 at r=0.0/0.3/0.9
+
+### Test results
+- **70/70 tests pass** (6 new)
+- Headless simulation: KE=0 at r=0.0 (by frame ~240), r=0.3 (by frame ~240), r=0.9 (by frame ~350)
+- Full color_assign pipeline verified with new CSV format
+
+### Files changed
+- `include/physics.h` — Added `#include "sim_config.h"` and `applyDefaultConfig()` inline helper
+- `include/sim_config.h` — Added comment documenting that `applyDefaultConfig` lives in physics.h
+- `src/csv_io.cpp` — Uncolored balls saved as 4-column rows (no color columns)
+- `src/main.cpp` — Replaced 2 blocks of manual config with `applyDefaultConfig()` calls
+- `src/color_assign.cpp` — Replaced manual config with `applyDefaultConfig()` call
+- `src/scene_gen.cpp` — Added `#include "sim_config.h"`, derived defaults from WINDOW_WIDTH/HEIGHT
+- `tests/test_physics.cpp` — 6 new tests, updated `csv_save_preserves_ball_color_flag` for new behavior
+- `docs/ARCHITECTURE.md` — Updated test count, documented applyDefaultConfig and CSV color preservation
+- `docs/BUILD.md` — Updated test count and categories
+- `TASKS.md` — Iteration 15 tasks logged
+- `AGENT-PROGRESS.md` — This entry
+
+### Known issues remaining
+- No interactive display (needs X11/Wayland)
+- Git push still needs GitHub credentials
+- Visual polish (UI sliders, color schemes) not yet implemented
+- SIMD vectorization for physics inner loops not yet explored
+
 ## Iteration 14 — 2026-03-29 (Claude Opus 4.6)
 
 ### What was done

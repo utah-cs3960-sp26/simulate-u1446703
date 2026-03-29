@@ -23,3 +23,7 @@ struct DefaultPhysicsConfig {
     static constexpr float sleepSpeed        = 5.0f;
     static constexpr float bounceThreshold   = 30.0f;
 };
+
+// applyDefaultConfig is declared in physics.h (which includes this header)
+// so that it has access to the full PhysicsConfig definition. It applies
+// all DefaultPhysicsConfig values, letting callers override individual fields.

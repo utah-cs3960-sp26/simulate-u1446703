@@ -3,6 +3,7 @@
 // Contains Ball, Wall, and PhysicsWorld. All physics logic lives here,
 // completely independent of SDL so it can be tested in isolation.
 
+#include "sim_config.h"  // DefaultPhysicsConfig, WINDOW_WIDTH/HEIGHT
 #include <vector>
 #include <unordered_map>
 #include <cmath>
@@ -150,6 +151,21 @@ struct PhysicsConfig {
     // its net displacement is zero each substep.
     float stuckThreshold = 0.1f;
 };
+
+// ── Apply centralized default config ────────────────────────────────
+// Sets all PhysicsConfig fields to the values from DefaultPhysicsConfig.
+// Callers can then override individual fields (e.g., restitution).
+// This eliminates boilerplate in main.cpp, color_assign.cpp, and tests.
+inline void applyDefaultConfig(PhysicsConfig& config) {
+    config.gravity          = DefaultPhysicsConfig::gravity;
+    config.restitution      = DefaultPhysicsConfig::restitution;
+    config.substeps         = DefaultPhysicsConfig::substeps;
+    config.solverIterations = DefaultPhysicsConfig::solverIterations;
+    config.damping          = DefaultPhysicsConfig::damping;
+    config.friction         = DefaultPhysicsConfig::friction;
+    config.sleepSpeed       = DefaultPhysicsConfig::sleepSpeed;
+    config.bounceThreshold  = DefaultPhysicsConfig::bounceThreshold;
+}
 
 // ── Spatial hash grid ───────────────────────────────────────────────
 // Divides space into uniform cells so ball-ball collision only checks

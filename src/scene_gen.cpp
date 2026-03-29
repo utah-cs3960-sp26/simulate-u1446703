@@ -23,6 +23,7 @@
 //   funnel — Balls concentrated at top-center, funneled by angled walls
 //   pile   — Balls stacked in a narrow column above a V-shaped funnel
 
+#include "sim_config.h"  // WINDOW_WIDTH, WINDOW_HEIGHT for default container size
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -42,9 +43,11 @@ struct SceneConfig {
     int numBalls      = 1000;
     float radiusMin   = 3.0f;
     float radiusMax   = 6.0f;
-    float width       = 1100.0f;  // Inner container width
-    float height      = 700.0f;   // Inner container height
-    float margin      = 50.0f;    // Offset from (0,0) to container top-left
+    // Default container fills the simulation window minus a margin on each side.
+    // Derived from WINDOW_WIDTH/HEIGHT in sim_config.h so all tools agree.
+    float margin      = 50.0f;
+    float width       = static_cast<float>(WINDOW_WIDTH)  - 2 * 50.0f;  // 1100
+    float height      = static_cast<float>(WINDOW_HEIGHT) - 2 * 50.0f;  // 700
     int numShelves    = 2;
     std::string layout = "grid";
     unsigned seed     = 0;        // 0 = time-based

@@ -1830,13 +1830,10 @@ TEST(csv_save_preserves_ball_color_flag) {
     ASSERT(loaded.balls[0].color.g == 128);
     ASSERT(loaded.balls[0].color.b == 64);
 
-    // Second ball: saved as 0,0,0 but still loads with hasColor=true
-    // because the CSV always writes color columns. This is by design —
-    // once a ball goes through CSV roundtrip, it gains explicit color.
-    ASSERT(loaded.balls[1].color.hasColor);
-    ASSERT(loaded.balls[1].color.r == 0);
-    ASSERT(loaded.balls[1].color.g == 0);
-    ASSERT(loaded.balls[1].color.b == 0);
+    // Second ball: uncolored balls are saved without color columns (4-col
+    // format) so they preserve hasColor=false through the roundtrip.
+    // This means the renderer will use speed-based coloring, not black.
+    ASSERT(!loaded.balls[1].color.hasColor);
 }
 
 TEST(scene_gen_all_layouts_produce_valid_output) {
@@ -2109,6 +2106,170 @@ TEST(csv_roundtrip_preserves_walls_exactly) {
     ASSERT_NEAR(loaded.walls[2].p1.y, 200.25f, 0.1f);
     ASSERT_NEAR(loaded.walls[2].p2.x, 500.75f, 0.1f);
     ASSERT_NEAR(loaded.walls[2].p2.y, 350.125f, 0.1f);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Iteration 15 — CSV color preservation, config helper, robustness
+// ═══════════════════════════════════════════════════════════════════════
+
+TEST(csv_roundtrip_preserves_uncolored_balls) {
+    // Uncolored balls (hasColor=false) must survive a CSV roundtrip without
+    // gaining color. Previously they were saved as 0,0,0 and loaded as black.
+    PhysicsWorld world;
+
+    Ball colored(Vec2(100, 100), 5.0f);
+    colored.color = {200, 100, 50, true};
+    world.balls.push_back(colored);
+
+    Ball uncolored(Vec2(200, 200), 7.0f);
+    // Default: hasColor=false
+    world.balls.push_back(uncolored);
+
+    Ball colored2(Vec2(300, 300), 4.0f);
+    colored2.color = {0, 255, 0, true};
+    world.balls.push_back(colored2);
+
+    std::string path = "/tmp/test_uncolored_roundtrip.csv";
+    ASSERT(saveSceneToCSV(path, world));
+
+    PhysicsWorld loaded;
+    ASSERT(loadSceneFromCSV(path, loaded));
+    ASSERT(loaded.balls.size() == 3);
+
+    // First ball: colored, preserved
+    ASSERT(loaded.balls[0].color.hasColor);
+    ASSERT(loaded.balls[0].color.r == 200);
+    ASSERT(loaded.balls[0].color.g == 100);
+    ASSERT(loaded.balls[0].color.b == 50);
+
+    // Second ball: uncolored, must remain uncolored
+    ASSERT(!loaded.balls[1].color.hasColor);
+    ASSERT_NEAR(loaded.balls[1].radius, 7.0f, 0.1f);
+
+    // Third ball: colored, preserved
+    ASSERT(loaded.balls[2].color.hasColor);
+    ASSERT(loaded.balls[2].color.r == 0);
+    ASSERT(loaded.balls[2].color.g == 255);
+    ASSERT(loaded.balls[2].color.b == 0);
+}
+
+TEST(apply_default_config_sets_all_fields) {
+    // Verify applyDefaultConfig populates all fields from DefaultPhysicsConfig.
+    PhysicsConfig cfg;
+    cfg.gravity = 999.0f;          // Set to non-default value
+    cfg.restitution = 0.99f;
+    cfg.substeps = 1;
+
+    applyDefaultConfig(cfg);
+
+    ASSERT_NEAR(cfg.gravity, DefaultPhysicsConfig::gravity, 0.01f);
+    ASSERT_NEAR(cfg.restitution, DefaultPhysicsConfig::restitution, 0.01f);
+    ASSERT(cfg.substeps == DefaultPhysicsConfig::substeps);
+    ASSERT(cfg.solverIterations == DefaultPhysicsConfig::solverIterations);
+    ASSERT_NEAR(cfg.damping, DefaultPhysicsConfig::damping, 0.0001f);
+    ASSERT_NEAR(cfg.friction, DefaultPhysicsConfig::friction, 0.01f);
+    ASSERT_NEAR(cfg.sleepSpeed, DefaultPhysicsConfig::sleepSpeed, 0.01f);
+    ASSERT_NEAR(cfg.bounceThreshold, DefaultPhysicsConfig::bounceThreshold, 0.01f);
+}
+
+TEST(apply_default_config_allows_override) {
+    // After applyDefaultConfig, individual fields can be overridden.
+    PhysicsConfig cfg;
+    applyDefaultConfig(cfg);
+    cfg.restitution = 0.8f;
+    cfg.gravity = 200.0f;
+
+    ASSERT_NEAR(cfg.restitution, 0.8f, 0.01f);
+    ASSERT_NEAR(cfg.gravity, 200.0f, 0.01f);
+    // Other fields unchanged from defaults
+    ASSERT(cfg.substeps == DefaultPhysicsConfig::substeps);
+}
+
+TEST(csv_load_4_column_ball_rows) {
+    // CSV files with 4-column ball rows (no color) should load correctly
+    // with hasColor=false.
+    std::string path = "/tmp/test_4col_balls.csv";
+    {
+        std::ofstream f(path);
+        f << "type,param1,param2,param3\n";
+        f << "ball,100,200,5\n";
+        f << "ball,300,400,8\n";
+    }
+
+    PhysicsWorld world;
+    ASSERT(loadSceneFromCSV(path, world));
+    ASSERT(world.balls.size() == 2);
+
+    ASSERT_NEAR(world.balls[0].pos.x, 100.0f, 0.1f);
+    ASSERT_NEAR(world.balls[0].pos.y, 200.0f, 0.1f);
+    ASSERT_NEAR(world.balls[0].radius, 5.0f, 0.1f);
+    ASSERT(!world.balls[0].color.hasColor);
+
+    ASSERT_NEAR(world.balls[1].pos.x, 300.0f, 0.1f);
+    ASSERT_NEAR(world.balls[1].pos.y, 400.0f, 0.1f);
+    ASSERT_NEAR(world.balls[1].radius, 8.0f, 0.1f);
+    ASSERT(!world.balls[1].color.hasColor);
+}
+
+TEST(csv_mixed_colored_and_uncolored_roundtrip) {
+    // A file with a mix of 4-column and 7-column ball rows should load both
+    // correctly, preserving hasColor state for each ball.
+    std::string path = "/tmp/test_mixed_color.csv";
+    {
+        std::ofstream f(path);
+        f << "# Mixed color test\n";
+        f << "type,param1,param2,param3,param4,param5,param6\n";
+        f << "wall,50,50,200,50\n";
+        f << "ball,100,100,5,255,0,0\n";       // colored
+        f << "ball,150,100,6\n";                // uncolored (4-col)
+        f << "ball,200,100,4,0,128,255\n";      // colored
+    }
+
+    PhysicsWorld world;
+    ASSERT(loadSceneFromCSV(path, world));
+    ASSERT(world.balls.size() == 3);
+    ASSERT(world.walls.size() == 1);
+
+    ASSERT(world.balls[0].color.hasColor);
+    ASSERT(world.balls[0].color.r == 255);
+
+    ASSERT(!world.balls[1].color.hasColor);
+
+    ASSERT(world.balls[2].color.hasColor);
+    ASSERT(world.balls[2].color.b == 255);
+}
+
+TEST(settling_at_three_restitution_values_all_reach_zero_ke) {
+    // Verify KE reaches 0 at restitution 0.0, 0.3, and 0.9 for a
+    // moderately sized scene. This guards against regressions in the
+    // sleep/settling system across all bounce levels.
+    float restitutions[] = {0.0f, 0.3f, 0.9f};
+    for (float r : restitutions) {
+        PhysicsWorld world;
+        world.config.gravity = 500.0f;
+        world.config.restitution = r;
+
+        // Container
+        world.walls.push_back(Wall(Vec2(0, 0), Vec2(300, 0)));
+        world.walls.push_back(Wall(Vec2(300, 0), Vec2(300, 400)));
+        world.walls.push_back(Wall(Vec2(300, 400), Vec2(0, 400)));
+        world.walls.push_back(Wall(Vec2(0, 400), Vec2(0, 0)));
+
+        // 100 balls
+        for (int i = 0; i < 100; ++i) {
+            float x = 20.0f + (i % 14) * 20.0f;
+            float y = 20.0f + (i / 14) * 20.0f;
+            Ball b(Vec2(x, y), 5.0f);
+            b.vel = Vec2((i % 2 == 0) ? 15.0f : -15.0f, 10.0f);
+            world.balls.push_back(b);
+        }
+
+        // Run 500 frames (~8 seconds)
+        for (int i = 0; i < 500; ++i) world.step(0.016f);
+
+        float ke = world.totalKineticEnergy();
+        ASSERT(ke == 0.0f);
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════

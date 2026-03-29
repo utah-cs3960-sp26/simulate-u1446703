@@ -24,7 +24,7 @@ simulate-u1446703/
 │   ├── scene_gen.cpp       # Procedural scene generator (grid/rain/funnel/pile layouts)
 │   └── main.cpp            # Entry point, scene setup, main loop, headless mode, CSV CLI
 ├── tests/
-│   └── test_physics.cpp    # 64 unit tests (physics + CSV I/O + sleep system + edge cases + pipeline + config)
+│   └── test_physics.cpp    # 70 unit tests (physics + CSV I/O + sleep system + edge cases + pipeline + config)
 ├── screenshots/            # BMP screenshots from headless runs (gitignored)
 ├── docs/
 │   ├── ARCHITECTURE.md     # This file
@@ -75,17 +75,19 @@ simulate-u1446703/
 
 - **WINDOW_WIDTH / WINDOW_HEIGHT**: Simulation coordinate space constants (1200×800), shared by all tools without SDL dependency.
 - **DefaultPhysicsConfig**: Centralized physics defaults (gravity, damping, substeps, etc.) used by both `main.cpp` and `color_assign.cpp` to ensure consistent simulation behavior across tools.
-- Extracted in iteration 14 to fix config drift between `color_assign` (which had different damping=0.999, sleepSpeed=2.0, missing solverIterations/bounceThreshold) and the main simulator.
+- **applyDefaultConfig()**: Inline helper in `physics.h` that applies all `DefaultPhysicsConfig` values to a `PhysicsConfig` struct, eliminating per-tool boilerplate. Callers override individual fields (e.g., restitution) after calling it.
+- Extracted in iteration 14 to fix config drift between `color_assign` and the main simulator. Simplified in iteration 15 with `applyDefaultConfig()`.
 
 ### CSV I/O (csv_io.h / csv_io.cpp)
 
 - **File format**: Single CSV file holds both balls and walls, distinguished by a `type` column.
-- Ball rows: `ball,x,y,radius,r,g,b` (color columns optional on load).
+- Ball rows: `ball,x,y,radius,r,g,b` (7 columns, colored) or `ball,x,y,radius` (4 columns, uncolored).
 - Wall rows: `wall,x1,y1,x2,y2`.
+- **Color preservation** (iteration 15): Uncolored balls (`hasColor=false`) are saved as 4-column rows without color fields. This preserves the speed-based coloring through CSV roundtrips — previously all balls were saved with `0,0,0` and would reload as black.
 - **Window metadata**: Saved CSV files include a `# Window: WxH` comment with the simulation coordinate space dimensions. This allows `color_assign` and other tools to determine the correct coordinate mapping.
 - Comments (lines starting with `#`) and a header row are supported.
 - `loadSceneFromCSV()` clears existing world data before loading.
-- `saveSceneToCSV()` writes current ball positions and colors.
+- `saveSceneToCSV()` writes current ball positions; only colored balls get color columns.
 - Roundtrip tested: save → reload preserves all data within float precision.
 - **Bundled example scene**: `examples/two_groups_center_funnel.csv` starts two colored ball packs on the left/right sides of the default container and uses sloped guide walls plus a short center chute to funnel them together.
 
@@ -121,6 +123,7 @@ simulate-u1446703/
 | `CellData` | physics.h | Per-cell ball indices + generation stamp |
 | `PhysicsWorld` | physics.h/cpp | Owns balls+walls, runs simulation step with CCD |
 | `DefaultPhysicsConfig` | sim_config.h | Centralized physics defaults shared across simulator and tools |
+| `applyDefaultConfig()` | physics.h | Inline helper to apply DefaultPhysicsConfig to a PhysicsConfig |
 | `Renderer` | renderer.h/cpp | SDL3 window, drawing, event handling, FPS HUD, screenshots |
 | `loadSceneFromCSV` | csv_io.h/cpp | Load balls + walls from CSV file |
 | `saveSceneToCSV` | csv_io.h/cpp | Save current scene to CSV file |

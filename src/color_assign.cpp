@@ -116,14 +116,8 @@ int main(int argc, char* argv[]) {
     // ── Phase 1: Load the initial scene ─────────────────────────────
     // Use the same physics config as the main simulator for consistent behavior.
     PhysicsWorld world;
-    world.config.restitution      = restitution;
-    world.config.gravity          = DefaultPhysicsConfig::gravity;
-    world.config.substeps         = DefaultPhysicsConfig::substeps;
-    world.config.solverIterations = DefaultPhysicsConfig::solverIterations;
-    world.config.damping          = DefaultPhysicsConfig::damping;
-    world.config.friction         = DefaultPhysicsConfig::friction;
-    world.config.sleepSpeed       = DefaultPhysicsConfig::sleepSpeed;
-    world.config.bounceThreshold  = DefaultPhysicsConfig::bounceThreshold;
+    applyDefaultConfig(world.config);
+    world.config.restitution = restitution;
 
     if (!loadSceneFromCSV(inputCSV, world)) {
         fprintf(stderr, "Failed to load scene from '%s'\n", inputCSV);

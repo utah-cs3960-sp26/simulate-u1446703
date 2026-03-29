@@ -1,5 +1,33 @@
 # Tasks
 
+## Completed — Iteration 15 (2026-03-29)
+
+- [x] Fix CSV hasColor roundtrip bug:
+  - Uncolored balls (hasColor=false) were saved as `0,0,0` and loaded as black (hasColor=true)
+  - Now uncolored balls are saved as 4-column rows (ball,x,y,radius) preserving speed-based coloring
+  - Updated `csv_save_preserves_ball_color_flag` test to expect new behavior
+- [x] Add `applyDefaultConfig()` inline helper in `physics.h`:
+  - Applies all `DefaultPhysicsConfig` values to a `PhysicsConfig` struct
+  - Simplified config initialization in `main.cpp` (2 blocks) and `color_assign.cpp` (1 block)
+  - Reduces per-tool boilerplate from 8 manual field assignments to one function call
+- [x] Update `scene_gen.cpp` to use `sim_config.h`:
+  - Default container dimensions now derived from `WINDOW_WIDTH`/`WINDOW_HEIGHT`
+  - Eliminates risk of dimension drift between scene_gen and the simulator
+- [x] Move `physics.h` to include `sim_config.h` directly:
+  - All files that include `physics.h` now get shared constants and `applyDefaultConfig()`
+  - No circular dependency issues
+- [x] Add 6 new tests (64→70):
+  - `csv_roundtrip_preserves_uncolored_balls`: mixed colored/uncolored balls survive roundtrip
+  - `apply_default_config_sets_all_fields`: verifies all DefaultPhysicsConfig fields applied
+  - `apply_default_config_allows_override`: individual overrides after applyDefaultConfig work
+  - `csv_load_4_column_ball_rows`: 4-column CSV rows load without color
+  - `csv_mixed_colored_and_uncolored_roundtrip`: mixed-format CSV loads correctly
+  - `settling_at_three_restitution_values_all_reach_zero_ke`: 100 balls settle to KE=0 at r=0.0/0.3/0.9
+- [x] Verify all 70/70 tests pass
+- [x] Run headless simulations at r=0.0, 0.3, 0.9 — all reach KE=0
+- [x] Verify full color_assign pipeline with new CSV format
+- [x] Update documentation (ARCHITECTURE.md, BUILD.md, TASKS.md, AGENT-PROGRESS.md)
+
 ## Completed — Iteration 14 (2026-03-29)
 
 - [x] Create `sim_config.h` shared header with `WINDOW_WIDTH`, `WINDOW_HEIGHT`, and `DefaultPhysicsConfig`

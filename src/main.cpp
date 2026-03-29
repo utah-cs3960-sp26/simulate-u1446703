@@ -109,14 +109,8 @@ static int runHeadless(float restitution, int totalFrames, const char* prefix,
     SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "offscreen");
 
     PhysicsWorld world;
-    world.config.restitution      = restitution;
-    world.config.gravity          = DefaultPhysicsConfig::gravity;
-    world.config.substeps         = DefaultPhysicsConfig::substeps;
-    world.config.solverIterations = DefaultPhysicsConfig::solverIterations;
-    world.config.damping          = DefaultPhysicsConfig::damping;
-    world.config.friction         = DefaultPhysicsConfig::friction;
-    world.config.sleepSpeed       = DefaultPhysicsConfig::sleepSpeed;
-    world.config.bounceThreshold  = DefaultPhysicsConfig::bounceThreshold;
+    applyDefaultConfig(world.config);
+    world.config.restitution = restitution;
 
     if (loadCSV) {
         if (!loadSceneFromCSV(loadCSV, world)) {
@@ -244,14 +238,8 @@ int main(int argc, char* argv[]) {
 
     // Set up physics world with shared default config
     PhysicsWorld world;
-    world.config.restitution      = restitution;
-    world.config.gravity          = DefaultPhysicsConfig::gravity;
-    world.config.substeps         = DefaultPhysicsConfig::substeps;
-    world.config.solverIterations = DefaultPhysicsConfig::solverIterations;
-    world.config.damping          = DefaultPhysicsConfig::damping;
-    world.config.friction         = DefaultPhysicsConfig::friction;
-    world.config.sleepSpeed       = DefaultPhysicsConfig::sleepSpeed;
-    world.config.bounceThreshold  = DefaultPhysicsConfig::bounceThreshold;
+    applyDefaultConfig(world.config);
+    world.config.restitution = restitution;
 
     if (loadCSV) {
         if (!loadSceneFromCSV(loadCSV, world)) {
