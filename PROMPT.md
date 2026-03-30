@@ -23,7 +23,7 @@ There must be accurate and adequate tests for this simulator. You must at all co
 
 You must **always** make sure existing features are up to spec before beginning on a new feature. New features should not be created, nor their tests created, until every existing and core feature works flawlessly. It may take multiple iterations to make this happen. You're goal is polish, not fancy features.
 
-Tests should **always** have a reasonable timeout so they don't run forever.
+Tests should **always** have a reasonable timeout so they don't run forever. You should seperate tests that take a while (more than a few seconds) into their own file so they can only be run when you are working on a relevant part of the code base. Additionally, when possible you should only run relevant tests instead of all of them in order to save time and context
 
 # Multi-agent context
 
