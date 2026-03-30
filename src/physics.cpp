@@ -229,17 +229,35 @@ void PhysicsWorld::integratePositions(float subDt) {
         for (const auto& wall : walls) {
             float t = sweptCircleVsLine(oldPos, b.pos, b.radius, wall);
             if (t >= 0.0f) {
+                // Treat swept wall hits exactly like overlap-based wall hits
+                // for settling purposes. Without these flags, a ball clipped
+                // back to the wall by CCD looks like it had "no contact this
+                // frame", so gravity rebuilds velocity every frame while the
+                // ball stays pinned in place. That showed up as residual KE in
+                // the large settling tests even though the ball never escaped.
+                b.inRestingContact = true;
+                b.inContactThisFrame = true;
+
                 // Move ball back to the contact point (edge touches wall)
                 b.pos = oldPos + (b.pos - oldPos) * t;
 
-                // Reflect velocity along wall normal
+                // Reflect velocity along wall normal.
+                // Keep the CCD response aligned with solveBallWallCollisions():
+                // slow contacts use zero restitution so resting balls do not
+                // keep re-bouncing purely because they touched the wall via the
+                // swept path instead of the overlap path.
                 Vec2 n = wall.normal();
                 float velN = b.vel.dot(n);
                 if (velN < 0.0f) {
+                    float effectiveRestitution = config.restitution;
+                    if (std::abs(velN) < config.bounceThreshold) {
+                        effectiveRestitution = 0.0f;
+                    }
+
                     Vec2 velNormal = n * velN;
                     Vec2 velTangent = b.vel - velNormal;
                     b.vel = velTangent * (1.0f - config.friction)
-                          - velNormal * config.restitution;
+                          - velNormal * effectiveRestitution;
                 }
                 // Don't break — check remaining walls too (corner cases)
             }

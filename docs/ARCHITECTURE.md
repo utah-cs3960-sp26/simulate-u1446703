@@ -24,7 +24,7 @@ simulate-u1446703/
 │   ├── scene_gen.cpp       # Procedural scene generator (grid/rain/funnel/pile layouts)
 │   └── main.cpp            # Entry point, scene setup, main loop, headless mode, CSV CLI
 ├── tests/
-│   └── test_physics.cpp    # 70 unit tests (physics + CSV I/O + sleep system + edge cases + pipeline + config)
+│   └── test_physics.cpp    # 72 unit tests (physics + CSV I/O + sleep system + CCD + edge cases + pipeline + config)
 ├── screenshots/            # BMP screenshots from headless runs (gitignored)
 ├── docs/
 │   ├── ARCHITECTURE.md     # This file
@@ -37,9 +37,9 @@ simulate-u1446703/
 ### Physics Engine (physics.h / physics.cpp)
 
 - **Substep integration**: Each frame is divided into N substeps (default 8) to prevent tunneling.
-- **Iterative constraint solving**: Each substep runs 4 iterations of collision resolution.
+- **Iterative constraint solving**: Each substep runs 8 iterations of collision resolution.
 - **Position-based correction + impulse**: Overlapping objects are first separated positionally, then velocity impulses are applied. This prevents the "jitter→explode" failure mode.
-- **CCD (continuous collision detection)**: After each position integration, a swept-circle-vs-line test checks whether any ball crossed a wall during the substep. If so, the ball is clipped back to the wall surface and its velocity is reflected. This catches extreme-speed tunneling that substeps alone might miss.
+- **CCD (continuous collision detection)**: After each position integration, a swept-circle-vs-line test checks whether any ball crossed a wall during the substep. If so, the ball is clipped back to the wall surface and its velocity is reflected. Swept wall contacts also set the same contact flags used by the settling system and honor the low-speed `bounceThreshold`, preventing wall-clipped balls from silently rebuilding gravity velocity forever.
 - **Correct ball-ball restitution response**: The pair solver computes relative velocity using the standard normal direction (A→B) so approaching balls receive the intended restitution impulse.
 - **Endpoint-aware wall contacts**: Exact wall-endpoint overlaps distinguish point contacts from segment interiors, allowing correct reflection at corners.
 - **Spatial hash grid with generation counter**: Ball-ball collision uses `SpatialGrid` that buckets balls into uniform cells. Only pairs sharing a cell are tested, reducing average cost from O(n²) to ~O(n). Cell size is auto-tuned to 2× the max ball radius. The grid uses a generation counter for O(1) `clear()` — cells with stale generation are treated as empty on access. Duplicate pairs from overlapping cells are handled by idempotency.
@@ -51,7 +51,7 @@ simulate-u1446703/
   - **Contact sleep** (`contactSleepSpeed`): Balls in contact and moving below 40 px/s are zeroed. This simulates static friction and catches shelf-sliding equilibria where gravity's slope component balances damping/friction at a steady-state speed above the normal sleep threshold.
   - **Stuck detection** (`stuckThreshold`): Per-frame position comparison detects balls with high velocity but zero net displacement. These are trapped at terminal velocity (~250 px/s) against a surface — gravity pushes them in, collision correction pushes them back. Zeroed when displacement < 0.1 px and speed > 100 px/s. Previously, such balls would vibrate at 250 px/s indefinitely.
   - Both mechanisms are disabled when `sleepSpeed=0` (for unit tests that need precise velocity tracking).
-- **Settling invariant coverage**: Tests verify that restitution affects decay time but not the final packed footprint — at 50, 120, 500, and 1000 ball scales. KE reaches exactly 0 at all restitution values (0.0, 0.3, 0.9).
+- **Settling invariant coverage**: Tests verify that restitution affects decay time but not the final packed footprint — at 50, 120, 500, and 1000 ball scales. KE reaches exactly 0 at all restitution values (0.0, 0.3, 0.9), including the wall-CCD settling case that had regressed on this branch.
 - **Full-scale 1000-ball tests**: No-overlap, settling-invariance, and KE=0 tests at the actual production ball count.
 
 ### Renderer (renderer.h / renderer.cpp)
@@ -132,7 +132,7 @@ simulate-u1446703/
 ## Collision Resolution Algorithm
 
 ### Ball-Wall (with CCD)
-1. **CCD pass** (in `integratePositions`): For each ball, swept-circle-vs-line test against all walls. If the ball's trajectory this substep crosses a wall, clip position back to the contact point and reflect velocity.
+1. **CCD pass** (in `integratePositions`): For each ball, swept-circle-vs-line test against all walls. If the ball's trajectory this substep crosses a wall, clip position back to the contact point, mark wall contact for settling, and reflect velocity using the same low-speed restitution suppression as the overlap solver.
 2. **Overlap resolution** (in `solveBallWallCollisions`): Find closest point on wall segment to ball center. Distinguish segment interiors from clamped endpoints. If distance < radius: push ball out along normal, reflect velocity with restitution.
 
 ### Ball-Ball
@@ -151,5 +151,6 @@ simulate-u1446703/
 | Headroom | ~17× |
 | Spatial grid clear | O(1) via generation counter |
 | Ball-ball broadphase | O(n) average via spatial hash |
-| KE convergence (r=0.0) | 0 by frame ~300 |
-| KE convergence (r=0.9) | 0 by frame ~360 |
+| KE convergence (r=0.0) | 0 by frame ~280 |
+| KE convergence (r=0.3) | 0 by frame ~280 |
+| KE convergence (r=0.9) | 0 by frame ~300 |

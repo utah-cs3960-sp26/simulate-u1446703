@@ -1153,6 +1153,33 @@ TEST(ccd_works_with_angled_walls) {
     ASSERT(distToWallLine >= world.balls[0].radius - 1.0f);
 }
 
+TEST(ccd_wall_contact_counts_as_resting_contact) {
+    // Regression test for a subtle settling bug: a phase-2 ball resting
+    // exactly on a wall can hit the CCD path at t=0 every frame. If that
+    // swept contact does not mark contact for the sleep system, gravity
+    // keeps rebuilding downward velocity even though the ball never moves,
+    // producing residual KE forever.
+    PhysicsWorld world;
+    world.config.gravity = 500.0f;
+    world.config.restitution = 0.0f;
+
+    // Bottom wall wound the same way as the real container so the inward
+    // normal points upward. The ball starts exactly touching it.
+    world.walls.push_back(Wall(Vec2(200.0f, 100.0f), Vec2(0.0f, 100.0f)));
+
+    Ball b(Vec2(100.0f, 95.0f), 5.0f);
+    b.hasBeenActive = true; // Exercise the phase-2 settling path directly.
+    world.balls.push_back(b);
+
+    for (int i = 0; i < 120; ++i) {
+        world.step(0.016f);
+    }
+
+    ASSERT_NEAR(world.balls[0].pos.y, 95.0f, 1e-3f);
+    ASSERT(world.balls[0].vel.length() < 1e-3f);
+    ASSERT(world.totalKineticEnergy() == 0.0f);
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // Full-scale 1000-ball tests (matches production spec exactly)
 // ═══════════════════════════════════════════════════════════════════════

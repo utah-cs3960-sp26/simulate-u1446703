@@ -36,10 +36,10 @@ cmake --build build
 ./build/tests
 ```
 
-Expected: **70/70 tests pass**. Includes:
+Expected: **72/72 tests pass**. Includes:
 - Vec2 math (6), gravity (2), ball-wall (5), ball-ball (4)
 - Restitution behavior (4), energy/settling (3), wall normals (2)
-- Collision edge cases (3), CCD (2), performance benchmark (1)
+- Collision edge cases (3), CCD (3), performance benchmark (1)
 - Large-scale 500-ball (2), full-scale 1000-ball (2)
 - CSV I/O (7), ball color (2)
 - Sleep system (3): gravity-from-rest wakeup, counter reset, zero-velocity settling
@@ -55,6 +55,7 @@ Expected: **70/70 tests pass**. Includes:
 - CSV color preservation (3): uncolored roundtrip, 4-column load, mixed colored/uncolored
 - Config helper (2): applyDefaultConfig sets all fields, allows override
 - Multi-restitution settling (1): KE=0 at r=0.0/0.3/0.9 for 100 balls
+- CCD settling regression (1): wall-clipped resting balls do not rebuild gravity velocity forever
 
 ## Run Simulator
 
@@ -157,3 +158,4 @@ mkdir -p screenshots
 - 30 FPS budget: 33 ms → ~17× headroom for physics alone
 - Spatial hash grid: O(n) broadphase with O(1) clear via generation counter
 - CCD: negligible overhead (one dot product per ball-wall pair per substep)
+- Headless convergence: KE=0 by frame ~280 at restitution 0.0/0.3 and ~300 at restitution 0.9

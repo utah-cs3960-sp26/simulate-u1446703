@@ -1,5 +1,53 @@
 # Agent Progress Log
 
+## Iteration 16 — 2026-03-30 (GPT-5)
+
+### What was done
+Fixed a real settling regression in the wall-CCD path and restored the branch to a fully passing, fully settling state.
+
+1. **Diagnosed the regression**:
+   - Baseline verification showed the branch was not actually green: `./build/tests` failed 3 settling-focused tests (`large_scale_restitution_preserves_packed_size`, `full_scale_1000_balls_restitution_invariance`, `full_scale_settles_to_zero_ke`).
+   - Headless simulator runs at restitution 0.0, 0.3, and 0.9 also showed KE oscillating instead of cleanly reaching 0 at the expected frame counts.
+   - Root cause: `integratePositions()` handled swept wall contacts through CCD, but those contacts did **not** set `inRestingContact` / `inContactThisFrame`. Balls clipped back to a wall by CCD therefore looked like they had no contact, so gravity rebuilt downward velocity while they remained pinned to the same location.
+
+2. **Fixed CCD / settling parity** (`src/physics.cpp`):
+   - Swept wall contacts now set both `inRestingContact` and `inContactThisFrame`, feeding the same contact-aware sleep logic used by overlap-based wall contacts.
+   - The CCD wall response now also honors `bounceThreshold`, so low-speed swept contacts use zero restitution just like `solveBallWallCollisions()`.
+   - Added detailed comments explaining why this parity matters for future iterations and why the residual-KE failure appeared only in large settling scenarios.
+
+3. **Added a targeted regression test** (`tests/test_physics.cpp`):
+   - New test: `ccd_wall_contact_counts_as_resting_contact`
+   - Covers the exact failure mode: a phase-2 ball resting on a wall and repeatedly entering the CCD path at `t=0` must remain settled instead of silently rebuilding gravity velocity forever.
+
+4. **Updated planning / docs**:
+   - `TASKS.md`: logged iteration 16 as completed with the regression diagnosis, fix, and verification results.
+   - `docs/ARCHITECTURE.md`: documented that CCD wall contacts now participate in settling/contact logic and updated the test count and convergence table.
+   - `docs/BUILD.md`: updated the expected test count to 72/72 and documented the new CCD-settling regression coverage.
+
+### Verification performed
+- `cmake --build build`
+- `./build/tests` → **72/72 passed**
+- `./build/simulator --headless 0.0 400 screenshots/iter16_fix_r00`
+  - KE reached 0 by frame ~280
+- `./build/simulator --headless 0.3 400 screenshots/iter16_fix_r03`
+  - KE reached 0 by frame ~280
+- `./build/simulator --headless 0.9 500 screenshots/iter16_fix_r09`
+  - KE reached 0 by frame ~300
+
+### Files changed
+- `src/physics.cpp` — CCD wall contacts now mark contact flags and honor `bounceThreshold`
+- `tests/test_physics.cpp` — Added `ccd_wall_contact_counts_as_resting_contact`
+- `TASKS.md` — Logged iteration 16 completion and verification
+- `docs/ARCHITECTURE.md` — Documented CCD/settling fix and updated counts/perf notes
+- `docs/BUILD.md` — Updated expected test count and regression-coverage notes
+- `AGENT-PROGRESS.md` — This entry
+
+### Current state
+- **72/72 tests pass**
+- **Headless settling is restored** across restitution values 0.0, 0.3, and 0.9
+- The earlier residual-KE plateau was a real bug, not test flakiness
+- The project is back in a good state for the next iteration
+
 ## Iteration 15 — 2026-03-29 (Claude Opus 4.6)
 
 ### What was done

@@ -1,5 +1,20 @@
 # Tasks
 
+## Completed — Iteration 16 (2026-03-30)
+
+- [x] Diagnose the current settling regression on this branch:
+  - Full test suite was failing 3 settling-focused tests (68/71 passing at start)
+  - Headless runs showed residual KE oscillations instead of cleanly reaching zero
+- [x] Fix the wall-CCD settling bug:
+  - Swept wall contacts now set `inRestingContact` and `inContactThisFrame`
+  - CCD wall response now honors `bounceThreshold`, matching the overlap-based wall solver for low-speed contacts
+- [x] Add regression coverage for CCD wall contacts rebuilding gravity velocity while pinned to a wall
+- [x] Rebuild, rerun the relevant tests, rerun the full suite, and rerun headless verification
+- [x] Verify the regression is gone:
+  - `./build/tests` now passes **72/72**
+  - Headless simulator reaches `KE=0` by frame ~280 at restitution 0.0/0.3 and by frame ~300 at restitution 0.9
+- [x] Update docs and append iteration notes to AGENT-PROGRESS.md
+
 ## Completed — Iteration 15 (2026-03-29)
 
 - [x] Fix CSV hasColor roundtrip bug:
