@@ -17,6 +17,10 @@ Make it possible to describe the initial scene in a CSV file; the CSV file shoul
 
 There must be accurate and adequate tests for this simulator. You must at all costs verify that the simulator is working after every change, by whatever means necessary. You are encouraged to launch the program yourself and verify that it works properly.
 
+# Priorities
+
+You must **always** make sure existing features are up to spec before beginning on a new feature. New features should not be created, nor their tests created, until every existing and core feature works flawlessly. It may take multiple iterations to make this happen. You're goal is polish, not fancy features.
+
 # Multi-agent context
 
 You are one instance of a repeating prompt. You're job is to create, test, and refine this project to best meet the specifications outlined in ./PROJECT-OVERVIEW.md. You are to always optimize for future iterations to cohesively take over from where you leave off. This includes but is not limited too:
