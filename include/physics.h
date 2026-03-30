@@ -71,6 +71,15 @@ struct Ball {
     // sleep threshold to balls sliding slowly on surfaces.
     bool inRestingContact = false;
 
+    // Per-frame contact flag: set whenever inRestingContact is set during
+    // any substep of the current frame. Cleared at frame START (not substep
+    // start), so it persists across substeps. Used by applySleepThreshold()
+    // to distinguish "floating in air" (inContactThisFrame=false) from
+    // "in pile but briefly separated" (inContactThisFrame=true).
+    // This prevents the oscillation cycle where solver-perturbed pile balls
+    // get counter-based sleep and accumulate gravity velocity.
+    bool inContactThisFrame = false;
+
     // Previous position: saved at the start of each substep for stuck
     // detection. If a ball is in contact but its position hasn't changed,
     // it's trapped at terminal velocity and should be zeroed.

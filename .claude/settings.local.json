@@ -20,7 +20,15 @@
       "Bash(env)",
       "Bash(gh auth:*)",
       "Bash(cmake --build . --parallel 4)",
-      "Bash(./tests)"
+      "Bash(./tests)",
+      "Bash(ls /simulate-u1446703/build/*.bmp)",
+      "Bash(./scene_gen --help)",
+      "Bash(echo \"Exit: $?\")",
+      "Bash(./build/tests)",
+      "Bash(cmake --build build --parallel 4)",
+      "Bash(cmake --build /simulate-u1446703/build --parallel 4)",
+      "Bash(/tmp/diag2 2>&1)",
+      "Bash(git stash:*)"
     ]
   }
 }

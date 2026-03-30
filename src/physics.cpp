@@ -120,8 +120,10 @@ void PhysicsWorld::step(float dt) {
     // Save pre-frame positions for per-frame stuck detection.
     // Stuck balls have high velocity but zero net displacement over
     // a full frame because collision corrections cancel their movement.
+    // Also clear the per-frame contact flag (set during substeps below).
     for (auto& b : balls) {
         b.prevPos = b.pos;
+        b.inContactThisFrame = false; // Cleared once per frame, set during any substep
     }
 
     for (int s = 0; s < config.substeps; ++s) {
@@ -278,6 +280,7 @@ void PhysicsWorld::solveBallWallCollisions() {
                 // Any overlap means the ball is in contact — mark for
                 // contact-aware sleep regardless of approach speed.
                 ball.inRestingContact = true;
+                ball.inContactThisFrame = true; // Persists across all substeps this frame
 
                 Vec2 normal;
                 if (dist < 1e-6f) {
@@ -418,6 +421,8 @@ void PhysicsWorld::solveBallBallCollisions() {
         // position corrections for separating pairs.
         a.inRestingContact = true;
         b.inRestingContact = true;
+        a.inContactThisFrame = true; // Persists across all substeps this frame
+        b.inContactThisFrame = true;
 
         // Only resolve if balls are approaching each other
         if (velAlongNormal > 0.0f) return;
@@ -498,16 +503,35 @@ void PhysicsWorld::applyContactDamping() {
 //   starting from rest can actually fall.
 //
 // Phase 2 — Has been active (hasBeenActive):
-//   Instant sleep the moment speed < threshold. This aggressively kills
-//   micro-vibrations from the constraint solver and prevents perpetual
-//   bouncing oscillations in dense stacks.
+//   Uses inContactThisFrame (not per-substep inRestingContact) to distinguish:
+//   A) Ball had contact during ANY substep this frame (inContactThisFrame=true):
+//      → Instant sleep. Aggressively kills constraint-solver micro-vibrations.
+//      This covers settled pile balls and those briefly separated by the solver
+//      (they still have inContactThisFrame=true from earlier substeps this frame).
+//   B) Ball had NO contacts in ALL substeps this frame (inContactThisFrame=false):
+//      → Low-threshold sleep (0.3 px/s) instead of instant-sleep (5.0 px/s).
+//      The threshold is deliberately set BELOW one substep of gravity:
+//        gravity * subDt = 500 * (0.016/8) = 1.0 px/s > 0.3 px/s.
+//      After any zeroing, gravity immediately builds the velocity to 1.0 px/s
+//      which exceeds the low threshold → the ball falls freely. This prevents
+//      Phase 2 balls floating in air from being permanently frozen by instant
+//      sleep (which zeroed each 1.0 px/s gravity contribution before it could
+//      accumulate to the full 5.0 px/s threshold).
+//      Solver residuals (typically < 0.1 px/s) are still zeroed by the 0.3
+//      threshold, preventing floating garbage noise.
 //
-// The distinction prevents the old bug where gravity*subDt < sleepSpeed
-// made rest-start balls permanently frozen, while preserving the
-// aggressive settling behavior needed for stable stacking.
+// Using inContactThisFrame (per-frame) instead of inRestingContact (per-substep)
+// prevents the oscillation cycle: solver separates a pile ball → no contact in
+// last substep → counter-based sleep → gravity builds → ball falls into pile →
+// repeat. With inContactThisFrame, the ball is "in pile" for the full frame.
 // ═══════════════════════════════════════════════════════════════════════
 void PhysicsWorld::applySleepThreshold() {
     float threshold = config.sleepSpeed * config.sleepSpeed;
+    // Low threshold for Phase 2 balls not in contact this frame.
+    // Must be < gravity * subDt (typically 1.0 px/s) so gravity can
+    // immediately escape it after zeroing. 0.3 px/s is safely below this.
+    static constexpr float FLOATING_SLEEP_SQ = 0.09f; // 0.3 px/s
+
     for (auto& b : balls) {
         if (b.vel.lengthSq() < threshold) {
             if (!b.hasBeenActive) {
@@ -515,12 +539,21 @@ void PhysicsWorld::applySleepThreshold() {
                 b.sleepCounter++;
                 if (b.sleepCounter >= config.sleepDelay) {
                     b.vel = {0.0f, 0.0f};
-                    // Don't set hasBeenActive — let gravity try again next frame
                     b.sleepCounter = 0;
                 }
-            } else {
-                // Phase 2: instant sleep for previously-active balls
+            } else if (b.inContactThisFrame) {
+                // Phase 2 with contact this frame: instant sleep to kill
+                // solver micro-vibrations in dense stacks.
                 b.vel = {0.0f, 0.0f};
+                b.sleepCounter = 0;
+            } else {
+                // Phase 2 with NO contact this frame (floating in air):
+                // Only zero if velocity is below the floating threshold so
+                // gravity can immediately overcome it next substep.
+                if (b.vel.lengthSq() < FLOATING_SLEEP_SQ) {
+                    b.vel = {0.0f, 0.0f};
+                }
+                b.sleepCounter = 0;
             }
         } else {
             // Ball is moving fast enough — mark as active permanently
