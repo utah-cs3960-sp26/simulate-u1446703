@@ -58,6 +58,40 @@ static Vec2 closestPointOnSegment(const Vec2& p, const Vec2& a, const Vec2& b) {
     return a + ab * t;
 }
 
+// ── Helper: classify whether a wall contact is on a slope ───────────
+// A wall is "sloped" if gravity has a significant tangential (downslope)
+// component along its surface. On such walls, balls should slide rather
+// than freeze. We check the wall normal's vertical component: for a
+// perfectly horizontal floor normal.y = -1 (upward), so the tangential
+// gravity is zero. For a tilted wall the tangential gravity is
+// g * sqrt(1 - ny²). We flag walls where that exceeds a threshold.
+//
+// The threshold is chosen relative to the friction and damping forces
+// that the solver applies: if the downslope acceleration exceeds what
+// friction can hold, the ball should be sliding and must NOT be
+// aggressively slept.
+static bool isWallSloped(const Vec2& contactNormal, float gravity) {
+    // contactNormal points from wall toward ball center (outward).
+    // For a horizontal floor, this is (0, -1) (upward).
+    // ny is the vertical component: -1 for floor, 0 for vertical wall.
+    float ny = contactNormal.y;
+
+    // Only consider walls that provide some vertical support (not vertical
+    // side walls). Vertical walls (|ny| < 0.1) are not "shelves."
+    if (std::abs(ny) < 0.1f) return false;
+
+    // Tangential gravity component along the wall surface:
+    // g_tangential = g * sin(angle) = g * sqrt(1 - cos²(angle))
+    // where cos(angle) = |ny| (normal dot gravity_dir).
+    float sinAngle = std::sqrt(std::max(0.0f, 1.0f - ny * ny));
+    float tangentialAccel = gravity * sinAngle;
+
+    // If downslope gravity exceeds ~10 px/s², the ball should be sliding
+    // and shouldn't be aggressively slept. This corresponds to ~1.1° for
+    // g=500, which catches any meaningfully sloped surface.
+    return tangentialAccel > 10.0f;
+}
+
 // ── CCD: swept circle vs line segment ───────────────────────────────
 // Given a ball moving from oldPos to newPos, determine if it crossed
 // through the wall during this substep. If it did, returns the
@@ -124,12 +158,14 @@ void PhysicsWorld::step(float dt) {
     for (auto& b : balls) {
         b.prevPos = b.pos;
         b.inContactThisFrame = false; // Cleared once per frame, set during any substep
+        b.onSlopedWallThisFrame = false; // Cleared once per frame
     }
 
     for (int s = 0; s < config.substeps; ++s) {
-        // Clear resting-contact flags at the start of each substep.
+        // Clear per-substep contact flags.
         for (auto& b : balls) {
             b.inRestingContact = false;
+            b.onSlopedWall = false;
         }
 
         integrateVelocities(subDt);
@@ -241,6 +277,14 @@ void PhysicsWorld::integratePositions(float subDt) {
                 // Move ball back to the contact point (edge touches wall)
                 b.pos = oldPos + (b.pos - oldPos) * t;
 
+                // Classify slope for the CCD wall contact too, so balls
+                // swept onto shelves still get the slope exemption.
+                Vec2 n_ccd = wall.normal();
+                if (isWallSloped(n_ccd, config.gravity)) {
+                    b.onSlopedWall = true;
+                    b.onSlopedWallThisFrame = true;
+                }
+
                 // Reflect velocity along wall normal.
                 // Keep the CCD response aligned with solveBallWallCollisions():
                 // slow contacts use zero restitution so resting balls do not
@@ -301,6 +345,7 @@ void PhysicsWorld::solveBallWallCollisions() {
                 ball.inContactThisFrame = true; // Persists across all substeps this frame
 
                 Vec2 normal;
+                // We'll classify slope after computing the contact normal below.
                 if (dist < 1e-6f) {
                     const bool atEndpoint = (t <= 1e-4f) || (t >= 1.0f - 1e-4f);
 
@@ -325,6 +370,13 @@ void PhysicsWorld::solveBallWallCollisions() {
                 // Full correction for walls — they're immovable boundaries.
                 float penetration = ball.radius - dist;
                 ball.pos += normal * penetration;
+
+                // Classify whether this wall contact is on a slope.
+                // Balls on sloped walls should slide off, not freeze.
+                if (isWallSloped(normal, config.gravity)) {
+                    ball.onSlopedWall = true;
+                    ball.onSlopedWallThisFrame = true;
+                }
 
                 // Reflect velocity along normal with restitution.
                 // Use restitution=0 for slow contacts (resting under gravity)
@@ -503,6 +555,10 @@ void PhysicsWorld::applyContactDamping() {
     float contactThresholdSq = config.contactSleepSpeed * config.contactSleepSpeed;
     for (auto& b : balls) {
         if (!b.inRestingContact || !b.hasBeenActive) continue;
+        // Skip balls on sloped walls — they should slide off, not freeze.
+        // Without this check, balls on angled shelves get caught by the
+        // elevated contact sleep threshold and pile up permanently.
+        if (b.onSlopedWall) continue;
         if (b.vel.lengthSq() < contactThresholdSq) {
             b.vel = {0.0f, 0.0f};
         }
@@ -559,10 +615,25 @@ void PhysicsWorld::applySleepThreshold() {
                     b.vel = {0.0f, 0.0f};
                     b.sleepCounter = 0;
                 }
-            } else if (b.inContactThisFrame) {
-                // Phase 2 with contact this frame: instant sleep to kill
-                // solver micro-vibrations in dense stacks.
+            } else if (b.inContactThisFrame && !b.onSlopedWallThisFrame) {
+                // Phase 2 with contact on FLAT surfaces: instant sleep to
+                // kill solver micro-vibrations in dense stacks. Balls on
+                // flat floors/walls can be aggressively slept at sleepSpeed
+                // because gravity has no tangential component to drive motion.
                 b.vel = {0.0f, 0.0f};
+                b.sleepCounter = 0;
+            } else if (b.inContactThisFrame && b.onSlopedWallThisFrame) {
+                // Phase 2 on a SLOPED wall: use the floating threshold
+                // instead of instant sleep. This lets gravity build enough
+                // velocity to slide the ball downhill. Without this, the
+                // 5 px/s instant-sleep threshold catches the 1 px/s gravity
+                // contribution each substep and the ball freezes on the slope.
+                // The 0.3 px/s threshold is below one substep of gravity
+                // (g * subDt = 500 * 0.002 = 1.0 px/s), so gravity escapes
+                // it immediately after any zeroing.
+                if (b.vel.lengthSq() < FLOATING_SLEEP_SQ) {
+                    b.vel = {0.0f, 0.0f};
+                }
                 b.sleepCounter = 0;
             } else {
                 // Phase 2 with NO contact this frame (floating in air):

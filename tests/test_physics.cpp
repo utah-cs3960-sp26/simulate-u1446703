@@ -141,11 +141,13 @@ static PhysicsWorld makeShelfSettlingWorld(float restitution) {
     world.walls.push_back(Wall(Vec2(right, bottom), Vec2(left, bottom)));
     world.walls.push_back(Wall(Vec2(left, bottom), Vec2(left, top)));
 
-    const float midX = (left + right) / 2.0f;
     const float shelfY1 = top + (bottom - top) * 0.35f;
     const float shelfY2 = top + (bottom - top) * 0.6f;
-    world.walls.push_back(Wall(Vec2(left, shelfY1), Vec2(midX - 40.0f, shelfY1 + 50.0f)));
-    world.walls.push_back(Wall(Vec2(midX + 40.0f, shelfY2 + 50.0f), Vec2(right, shelfY2)));
+    // Steeper, shorter shelves (~25° slope, ~35% of container width)
+    float shelfLen = (right - left) * 0.35f;
+    float shelfDrop = shelfLen * 0.47f;
+    world.walls.push_back(Wall(Vec2(left, shelfY1), Vec2(left + shelfLen, shelfY1 + shelfDrop)));
+    world.walls.push_back(Wall(Vec2(right - shelfLen, shelfY2 + shelfDrop), Vec2(right, shelfY2)));
 
     // Mixed radii with deterministic initial velocities so balls
     // actually fall and bounce off shelves before settling.
@@ -1199,12 +1201,13 @@ static PhysicsWorld makeFullScaleWorld(float restitution) {
     world.walls.push_back(Wall(Vec2(right, bottom), Vec2(left, bottom)));
     world.walls.push_back(Wall(Vec2(left, bottom), Vec2(left, top)));
 
-    // Same shelves as main.cpp
-    float midX = (left + right) / 2.0f;
+    // Same shelves as main.cpp — steeper, shorter (~25° slope, ~35% width)
     float shelfY1 = top + (bottom - top) * 0.35f;
     float shelfY2 = top + (bottom - top) * 0.6f;
-    world.walls.push_back(Wall(Vec2(left, shelfY1), Vec2(midX - 40.0f, shelfY1 + 50.0f)));
-    world.walls.push_back(Wall(Vec2(midX + 40.0f, shelfY2 + 50.0f), Vec2(right, shelfY2)));
+    float shelfLen = (right - left) * 0.35f;
+    float shelfDrop = shelfLen * 0.47f;
+    world.walls.push_back(Wall(Vec2(left, shelfY1), Vec2(left + shelfLen, shelfY1 + shelfDrop)));
+    world.walls.push_back(Wall(Vec2(right - shelfLen, shelfY2 + shelfDrop), Vec2(right, shelfY2)));
 
     // 1000 balls in a grid with mixed radii (3–6 px, matching BALL_RADIUS range)
     // and deterministic initial velocities matching main.cpp's pattern.
@@ -1279,7 +1282,7 @@ TEST(full_scale_1000_balls_restitution_invariance) {
     // with the actual simulator layout across three restitution values.
     auto runAndMeasure = [](float restitution) -> SettledBounds {
         PhysicsWorld world = makeFullScaleWorld(restitution);
-        // 3000 frames to ensure even high-restitution fully settles
+        // 3000 frames ≈ 50 simulated seconds, enough for all restitution values
         for (int i = 0; i < 3000; ++i) {
             world.step(0.016f);
         }
@@ -1637,21 +1640,23 @@ TEST(phase2_floating_ball_falls_under_gravity) {
 // Contact-aware settling tests (iteration 12)
 // ═══════════════════════════════════════════════════════════════════════
 
-TEST(contact_sleep_stops_shelf_sliding) {
-    // Balls on an angled shelf should settle due to contact-aware sleep,
-    // not slide forever at equilibrium speed (gravity = damping loss).
+TEST(contact_sleep_stops_flat_shelf_sliding) {
+    // Balls on a flat horizontal shelf should settle due to contact-aware
+    // sleep. With the slope-aware system, balls on angled walls slide off
+    // instead — so this test uses a flat shelf (0° slope) to verify the
+    // sleep mechanism still works for horizontal surfaces.
     PhysicsWorld world;
     world.config.gravity = 500.0f;
     world.config.restitution = 0.3f;
-    world.config.contactSleepSpeed = 40.0f; // Must catch shelf equilibrium
+    world.config.contactSleepSpeed = 15.0f; // New default for slope-aware sleep
 
-    // Container with an angled shelf
+    // Container with a flat horizontal shelf
     world.walls.push_back(Wall(Vec2(50, 50), Vec2(600, 50)));
     world.walls.push_back(Wall(Vec2(600, 50), Vec2(600, 400)));
     world.walls.push_back(Wall(Vec2(600, 400), Vec2(50, 400)));
     world.walls.push_back(Wall(Vec2(50, 400), Vec2(50, 50)));
-    // Angled shelf: ~7° slope
-    world.walls.push_back(Wall(Vec2(50, 200), Vec2(400, 250)));
+    // Flat shelf: 0° slope (horizontal)
+    world.walls.push_back(Wall(Vec2(50, 250), Vec2(400, 250)));
 
     // 20 balls above the shelf
     for (int i = 0; i < 20; ++i) {
@@ -1663,7 +1668,7 @@ TEST(contact_sleep_stops_shelf_sliding) {
     // Run for 5 seconds
     for (int i = 0; i < 300; ++i) world.step(0.016f);
 
-    // All balls should be fully settled (KE = 0)
+    // All balls should be fully settled (KE < 1)
     float ke = world.totalKineticEnergy();
     ASSERT(ke < 1.0f);
 }
@@ -1718,11 +1723,13 @@ TEST(full_scale_settles_to_zero_ke) {
         world.walls.push_back(Wall(Vec2(right, top), Vec2(right, bottom)));
         world.walls.push_back(Wall(Vec2(right, bottom), Vec2(left, bottom)));
         world.walls.push_back(Wall(Vec2(left, bottom), Vec2(left, top)));
-        float midX = (left + right) / 2.0f;
         float shelfY1 = top + (bottom - top) * 0.35f;
         float shelfY2 = top + (bottom - top) * 0.6f;
-        world.walls.push_back(Wall(Vec2(left, shelfY1), Vec2(midX - 40, shelfY1 + 50)));
-        world.walls.push_back(Wall(Vec2(midX + 40, shelfY2 + 50), Vec2(right, shelfY2)));
+        // Steeper, shorter shelves (~25° slope, ~35% of container width)
+        float shelfLen = (right - left) * 0.35f;
+        float shelfDrop = shelfLen * 0.47f;
+        world.walls.push_back(Wall(Vec2(left, shelfY1), Vec2(left + shelfLen, shelfY1 + shelfDrop)));
+        world.walls.push_back(Wall(Vec2(right - shelfLen, shelfY2 + shelfDrop), Vec2(right, shelfY2)));
 
         // 500 balls (faster test than 1000) with initial velocities
         float spacing = 14.0f;
@@ -1738,11 +1745,14 @@ TEST(full_scale_settles_to_zero_ke) {
             world.balls.push_back(b);
         }
 
-        // Run for 60 simulated seconds
+        // Run for 60 simulated seconds — steeper shelves redirect balls
+        // faster than the old shallow shelves. KE reaches 0 by ~frame 400
+        // in headless testing, so 3600 provides ample margin.
         for (int i = 0; i < 3600; ++i) world.step(0.016f);
         return world.totalKineticEnergy();
     };
 
+    // All restitution values must reach KE=0 (fully settled).
     ASSERT(testSettling(0.0f) == 0.0f);
     ASSERT(testSettling(0.3f) == 0.0f);
     ASSERT(testSettling(0.9f) == 0.0f);
@@ -2351,6 +2361,42 @@ TEST(settling_at_three_restitution_values_all_reach_zero_ke) {
         float ke = world.totalKineticEnergy();
         ASSERT(ke == 0.0f);
     }
+}
+
+TEST(slope_contact_sleep_exemption_allows_individual_ball_to_slide) {
+    // Regression test for iteration 17: the slope-aware contactSleep
+    // exemption prevents the elevated contactSleepSpeed from catching
+    // a single ball sliding on a steep slope. Without the exemption,
+    // contactSleepSpeed=40 (old default) would freeze the ball mid-slide.
+    // With the exemption + lower contactSleepSpeed=15, a ball on a 25°
+    // slope slides past the shelf end and falls to the floor.
+    PhysicsWorld world;
+    world.config.gravity = 500.0f;
+    world.config.restitution = 0.0f; // zero bounce for clean slide
+
+    // Container
+    world.walls.push_back(Wall(Vec2(0, 0), Vec2(400, 0)));
+    world.walls.push_back(Wall(Vec2(400, 0), Vec2(400, 500)));
+    world.walls.push_back(Wall(Vec2(400, 500), Vec2(0, 500)));
+    world.walls.push_back(Wall(Vec2(0, 500), Vec2(0, 0)));
+
+    // Steep shelf: ~25° slope from (0,150) to (250,267.5)
+    float shelfEndX = 250.0f;
+    float shelfDrop = shelfEndX * 0.47f; // tan(25°)
+    world.walls.push_back(Wall(Vec2(0, 150), Vec2(shelfEndX, 150 + shelfDrop)));
+
+    // Single ball placed on the shelf surface
+    Ball b(Vec2(50.0f, 140.0f), 5.0f);
+    b.vel = Vec2(0.0f, 0.0f);
+    world.balls.push_back(b);
+
+    // Run for 300 frames — ball should slide off shelf and fall to floor
+    for (int i = 0; i < 300; ++i) world.step(0.016f);
+
+    // Ball should end up near the floor (y ≈ 490-500), not stuck on shelf
+    ASSERT(world.balls[0].pos.y > 400.0f);
+    // And fully settled
+    ASSERT(world.totalKineticEnergy() == 0.0f);
 }
 
 // ═══════════════════════════════════════════════════════════════════════

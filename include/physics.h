@@ -80,6 +80,17 @@ struct Ball {
     // get counter-based sleep and accumulate gravity velocity.
     bool inContactThisFrame = false;
 
+    // Slope-driven wall contact flags: set when the ball is in contact
+    // with a wall whose surface has a significant downslope gravity
+    // component. Balls on sloped walls should NOT be aggressively sleep-
+    // frozen — they need to slide off the slope. Without this, balls on
+    // shallow shelves get caught by contactSleepSpeed and form permanent
+    // piles on the shelf surface.
+    // Per-substep flag:
+    bool onSlopedWall = false;
+    // Per-frame flag (persists across substeps, cleared at frame start):
+    bool onSlopedWallThisFrame = false;
+
     // Previous position: saved at the start of each substep for stuck
     // detection. If a ball is in contact but its position hasn't changed,
     // it's trapped at terminal velocity and should be zeroed.
@@ -150,7 +161,7 @@ struct PhysicsConfig {
     // px/s) is above the normal sleepSpeed. For balls in contact, we
     // use this higher threshold to zero them out, simulating static
     // friction. Only applies to Phase 2 balls (hasBeenActive=true).
-    float contactSleepSpeed = 40.0f;
+    float contactSleepSpeed = 15.0f;
 
     // Position-based stuck detection threshold: if a ball is in contact
     // and its position moved less than this distance during a substep, the

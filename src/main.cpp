@@ -53,16 +53,21 @@ static void setupWalls(PhysicsWorld& world) {
     world.walls.push_back(Wall({right, bottom}, {left,  bottom})); // Bottom
     world.walls.push_back(Wall({left,  bottom}, {left,  top}));    // Left
 
-    // Angled shelves to make the simulation visually interesting
-    // These create ramps for balls to bounce off of
+    // Angled shelves to make the simulation visually interesting.
+    // Shelves are steep enough (~25°) that balls slide off rather than
+    // accumulating permanently. Shorter shelves also leave a gap in the
+    // center for balls to fall through.
     float midX = (left + right) / 2.0f;
     float shelfY1 = top + (bottom - top) * 0.35f;
     float shelfY2 = top + (bottom - top) * 0.6f;
 
-    // Left shelf (angled down-right)
-    world.walls.push_back(Wall({left, shelfY1}, {midX - 40, shelfY1 + 50}));
-    // Right shelf (angled down-left)
-    world.walls.push_back(Wall({midX + 40, shelfY2 + 50}, {right, shelfY2}));
+    // Left shelf: starts at left wall, angled steeply down-right (~25°)
+    // Ends at ~40% of the way across, leaving a wide center gap.
+    float shelfLen = (right - left) * 0.35f; // shorter than before
+    float shelfDrop = shelfLen * 0.47f;       // tan(25°) ≈ 0.47
+    world.walls.push_back(Wall({left, shelfY1}, {left + shelfLen, shelfY1 + shelfDrop}));
+    // Right shelf: starts at right wall, angled steeply down-left (~25°)
+    world.walls.push_back(Wall({right - shelfLen, shelfY2 + shelfDrop}, {right, shelfY2}));
 }
 
 // ── Place balls in a grid above the container ───────────────────────
